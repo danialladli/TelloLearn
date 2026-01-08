@@ -1,7 +1,7 @@
 // 1. IMPORT useRef
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronRight, ChevronLeft, Play, FileText, Code, Home } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Play, FileText, Code, Home, AlertCircle, CheckCircle } from 'lucide-react';
 
 import { MODULE_CONTENT } from '../data/moduleData.jsx';
 
@@ -12,11 +12,45 @@ export default function Module() {
   const [username, setUsername] = useState('Pilot');
   const [code, setCode] = useState('');
   
-  // 2. CREATE A REF FOR THE LINE NUMBERS
   const lineNumbersRef = useRef(null);
+  const [validation, setValidation] = useState({ isValid: true, message: "System Ready" });
 
   const lineNumbers = useMemo(() => {
     return code ? code.split('\n').map((_, i) => i + 1) : [1];
+  }, [code]);
+
+  useEffect(() => {
+    const checkCode = () => {
+      // 1. Safety Check (Block dangerous imports)
+      const forbidden = ['import os', 'import sys', 'subprocess', 'eval(', 'exec('];
+      for (let word of forbidden) {
+        if (code.includes(word)) {
+          return { isValid: false, message: `SECURITY ALERT: "${word}" is forbidden.` };
+        }
+      }
+
+      // 2. Logic Check (Must Connect)
+      if (!code.includes('Tello()')) {
+        return { isValid: false, message: "Missing drone initialization: 'drone = Tello()'" };
+      }
+      if (!code.includes('.connect()')) {
+        return { isValid: false, message: "Missing connection command: 'drone.connect()'" };
+      }
+      
+      // 3. Syntax Heuristic (Check for missing colons in loops/functions)
+      // Checks lines starting with def/for/if/while but NOT ending with :
+      const lines = code.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if ((trimmed.startsWith('def ') || trimmed.startsWith('if ') || trimmed.startsWith('for ') || trimmed.startsWith('while ')) && !trimmed.endsWith(':')) {
+           return { isValid: false, message: `Syntax Error on Line ${i+1}: Missing ':'` };
+        }
+      }
+
+      return { isValid: true, message: "Pre-Flight Checks Passed. Ready to Execute." };
+    };
+
+    setValidation(checkCode());
   }, [code]);
 
   // 3. SYNC SCROLL FUNCTION
@@ -46,10 +80,20 @@ export default function Module() {
   const nextStep = () => { if (step < 2) setStep(step + 1); };
   const prevStep = () => { if (step > 0) setStep(step - 1); };
 
+  const handleExecute = () => {
+    if (!validation.isValid) {
+      alert("Cannot Execute: " + validation.message);
+      return;
+    }
+    // TODO: Send 'code' to Backend here
+    console.log("Sending code to backend:", code);
+    alert("Mission Transmitted to Drone!");
+  };
+
   return (
     <div className="h-screen bg-tello-dark flex flex-col overflow-hidden relative">
       
-      {/* --- HEADER --- */}
+      {/* HEADER (Unchanged) */}
       <nav className="bg-white/10 backdrop-blur-sm px-6 py-4 flex justify-between items-center border-b border-white/10 shrink-0">
         <div className="flex items-center gap-4">
           <button onClick={() => navigate('/dashboard')} className="p-2 bg-slate-700 rounded-full hover:bg-slate-600 transition group">
@@ -57,7 +101,6 @@ export default function Module() {
           </button>
           <h1 className="text-xl font-bold text-white">Mission {safeId}: {content.title}</h1>
         </div>
-        
         <div className="flex items-center gap-4">
             <div className="flex gap-2 mr-8">
                 {[0, 1, 2].map(i => (
@@ -68,7 +111,7 @@ export default function Module() {
         </div>
       </nav>
 
-      {/* --- MAIN CONTENT --- */}
+      {/* MAIN CONTENT */}
       <div className="flex-1 flex items-center justify-center p-8 relative">
         <div className="w-full max-w-5xl h-full max-h-[700px] relative perspective-1000">
           
@@ -80,58 +123,44 @@ export default function Module() {
             <ChevronRight className="w-6 h-6 text-white" />
           </button>
 
-          {/* CARD 1: VIDEO */}
+          {/* CARD 1 & 2 (Unchanged) */}
           <div className={`absolute inset-0 w-full h-full bg-slate-900 rounded-3xl border border-slate-700 shadow-2xl flex flex-col overflow-hidden transition-all duration-700 ease-in-out ${step === 0 ? 'opacity-100 translate-x-0 z-20' : step > 0 ? 'opacity-0 -translate-x-96 z-10' : 'opacity-0 translate-x-96 z-0'}`}>
-              <div className="bg-slate-800 p-5 pl-20 border-b border-slate-700 flex items-center gap-3">
-                <Play className="text-blue-500" />
-                <h2 className="text-white font-bold text-lg">Step 1: Mission Briefing</h2>
-              </div>
-              <div className="flex-1 bg-black flex items-center justify-center relative">
-                 {content.videoUrl ? (
-                   <iframe width="100%" height="100%" src={content.videoUrl} title="Video" frameBorder="0" allowFullScreen className="w-full h-full pointer-events-auto"></iframe>
-                 ) : <div className="text-slate-500">No Video Available</div>}
-              </div>
+              <div className="bg-slate-800 p-5 pl-20 border-b border-slate-700 flex items-center gap-3"><Play className="text-blue-500" /><h2 className="text-white font-bold text-lg">Step 1: Mission Briefing</h2></div>
+              <div className="flex-1 bg-black flex items-center justify-center relative">{content.videoUrl ? <iframe width="100%" height="100%" src={content.videoUrl} title="Video" frameBorder="0" allowFullScreen className="w-full h-full pointer-events-auto"></iframe> : <div className="text-slate-500">No Video Available</div>}</div>
           </div>
 
-          {/* CARD 2: DOCS */}
           <div className={`absolute inset-0 w-full h-full bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden transition-all duration-700 ease-in-out ${step === 1 ? 'opacity-100 translate-x-0 z-20' : step < 1 ? 'opacity-0 translate-x-96 z-0' : 'opacity-0 -translate-x-96 z-10'}`}>
-              <div className="bg-slate-100 p-5 pl-20 border-b border-slate-200 flex items-center gap-3">
-                <FileText className="text-orange-500" />
-                <h2 className="text-slate-800 font-bold text-lg">Step 2: Documentation</h2>
-              </div>
-              <div className="flex-1 p-10 overflow-y-auto prose lg:prose-xl max-w-none">
-                 <h3 className="text-3xl font-bold text-slate-800 mb-6">{content.title}</h3>
-                 <div className="whitespace-pre-wrap text-slate-600 leading-loose text-lg">{content.docs}</div>
-              </div>
+              <div className="bg-slate-100 p-5 pl-20 border-b border-slate-200 flex items-center gap-3"><FileText className="text-orange-500" /><h2 className="text-slate-800 font-bold text-lg">Step 2: Documentation</h2></div>
+              <div className="flex-1 p-10 overflow-y-auto prose lg:prose-xl max-w-none"><h3 className="text-3xl font-bold text-slate-800 mb-6">{content.title}</h3><div className="whitespace-pre-wrap text-slate-600 leading-loose text-lg">{content.docs}</div></div>
           </div>
 
-          {/* CARD 3: CODE */}
+          {/* CARD 3: CODE (Updated) */}
           <div className={`absolute inset-0 w-full h-full bg-[#1e1e1e] rounded-3xl border border-slate-700 shadow-2xl flex flex-col overflow-hidden transition-all duration-700 ease-in-out ${step === 2 ? 'opacity-100 translate-x-0 z-20' : 'opacity-0 translate-x-96 z-0'}`}>
+              
+              {/* Toolbar */}
               <div className="bg-[#2d2d2d] p-4 pl-20 border-b border-black flex justify-between items-center shrink-0">
                 <div className="flex items-center gap-3">
                     <Code className="text-green-500" />
                     <h2 className="text-slate-200 font-bold text-lg">Step 3: Flight Computer</h2>
                 </div>
-                <button className="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg font-bold text-sm transition flex items-center gap-2 shadow-lg shadow-green-900/20 active:scale-95">
+                <button 
+                  onClick={handleExecute}
+                  // Disable button if validation fails
+                  disabled={!validation.isValid}
+                  className={`px-6 py-2.5 rounded-lg font-bold text-sm transition flex items-center gap-2 shadow-lg active:scale-95
+                    ${validation.isValid 
+                      ? 'bg-green-600 hover:bg-green-700 text-white shadow-green-900/20' 
+                      : 'bg-slate-600 text-slate-400 cursor-not-allowed'}`}
+                >
                     <Play className="w-4 h-4" /> EXECUTE MISSION
                 </button>
               </div>
 
-              {/* EDITOR AREA */}
+              {/* Editor */}
               <div className="flex-1 flex relative overflow-hidden">
-                
-                {/* 1. Line Numbers Column (ATTACH REF HERE) */}
-                <div 
-                  ref={lineNumbersRef}
-                  className="w-12 bg-[#252525] border-r border-[#333] text-slate-500 text-right font-mono text-sm py-4 pr-3 select-none overflow-hidden"
-                >
-                  {lineNumbers.map((num) => (
-                    <div key={num} className="leading-6">{num}</div>
-                  ))}
+                <div ref={lineNumbersRef} className="w-12 bg-[#252525] border-r border-[#333] text-slate-500 text-right font-mono text-sm py-4 pr-3 select-none overflow-hidden">
+                  {lineNumbers.map((num) => (<div key={num} className="leading-6">{num}</div>))}
                 </div>
-
-                {/* 2. Text Area (ATTACH ON SCROLL HERE) */}
-                {/* Added whitespace-pre to prevent line wrapping which breaks alignment */}
                 <textarea 
                     className="flex-1 bg-[#1e1e1e] text-green-400 font-mono text-sm p-4 leading-6 resize-none focus:outline-none selection:bg-green-900/50 whitespace-pre"
                     value={code}
@@ -141,8 +170,23 @@ export default function Module() {
                     autoCapitalize="off"
                     autoComplete="off"
                 ></textarea>
-                
               </div>
+
+              {/* NEW: STATUS BAR (The "Console") */}
+              <div className={`h-12 border-t border-black flex items-center px-6 gap-3 font-mono text-xs
+                 ${validation.isValid ? 'bg-[#1e1e1e] text-green-500' : 'bg-red-900/20 text-red-400'}`}>
+                 
+                 {validation.isValid 
+                    ? <CheckCircle className="w-4 h-4" /> 
+                    : <AlertCircle className="w-4 h-4" />
+                 }
+                 
+                 <span className="uppercase tracking-wider font-bold">
+                    {validation.isValid ? "SYSTEM READY" : "COMPILE ERROR"}:
+                 </span>
+                 <span className="flex-1 truncate">{validation.message}</span>
+              </div>
+
           </div>
 
         </div>
