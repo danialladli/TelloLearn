@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 
 const AuthLayout = ({ title, children }) => (
@@ -19,6 +19,13 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Clear localStorage on component mount
+  useEffect(() => {
+    console.log('[LOGIN] Clearing localStorage on page load');
+    localStorage.clear();
+    console.log('[LOGIN] localStorage cleared');
+  }, []);
+
   // 2. Handle typing in inputs
   const handleChange = (e) => {
     setFormData({
@@ -32,9 +39,12 @@ export default function Login() {
     e.preventDefault();
     setError(''); // Clear previous errors
     setLoading(true);
+    
+    console.log('[LOGIN] Attempting to login with username:', formData.username);
 
     try {
       // Send data to Python Backend
+      console.log('[LOGIN] Sending request to backend: http://127.0.0.1:8000/api/auth/login');
       const response = await fetch('http://127.0.0.1:8000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -42,18 +52,25 @@ export default function Login() {
       });
 
       const data = await response.json();
+      console.log('[LOGIN] Response received:', { status: response.status, data });
 
       if (response.ok) {
-        // SUCCESS: Save user to browser storage
-        localStorage.setItem('user', JSON.stringify(data));
+        // SUCCESS: Store only the username (lightweight session)
+        console.log('✅ [LOGIN] Authentication successful! Storing session...');
+        // Store only username - all data will be fetched from DB
+        localStorage.setItem('username', data.username);
+        console.log('[LOGIN] Session stored:', data.username);
         
         // Go to Dashboard
+        console.log('[LOGIN] Navigating to dashboard...');
         navigate('/dashboard');
       } else {
         // FAIL: Show error message from backend
+        console.error('❌ [LOGIN] Authentication failed:', data.detail || 'Login failed');
         setError(data.detail || 'Login failed');
       }
     } catch (err) {
+      console.error('❌ [LOGIN] Network/Connection error:', err);
       setError('Cannot connect to Ground Station (Backend offline?)');
     } finally {
       setLoading(false);

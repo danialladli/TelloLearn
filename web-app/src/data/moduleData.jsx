@@ -97,3 +97,32 @@ The pinnacle of drone programming is Swarm Intelligence. You will control multip
     defaultCode: "# No code available"
   }
 };
+
+// Array of modules with correct answers for validation
+export const modules = [
+  {
+    id: 1,
+    title: "Basic Flight Control",
+    correctAnswer: "from djitellopy import Tello\nimport time\n\n# 1. Connect\ndrone = Tello()\ndrone.connect()\nprint(f'Battery: {drone.get_battery()}%')\n\n# 2. Mission\ndrone.takeoff()\ntime.sleep(2)\n\ndrone.move_forward(30) # cm\ndrone.rotate_clockwise(90)\n\n# 3. Land\ndrone.land()"
+  },
+  {
+    id: 2,
+    title: "Landing Pad Accuracy",
+    correctAnswer: "from djitellopy import Tello\n\ndrone = Tello()\ndrone.connect()\n\n# Enable Downward Camera Detection\ndrone.enable_mission_pads()\ndrone.set_mission_pad_detection_direction(2) # Downward\n\ndrone.takeoff()\n\n# Mission: Hover until Pad 1 is found\npad = drone.get_mission_pad_id()\nif pad == 1:\n    drone.land()\nelse:\n    print('Searching for Landing Pad...') "
+  },
+  {
+    id: 3,
+    title: "Alphabet Recognition",
+    correctAnswer: "import cv2\nimport numpy as np\nfrom djitellopy import Tello\n\ndrone = Tello()\ndrone.connect()\ndrone.streamon()\n\nwhile True:\n    frame = drone.get_frame_read().frame\n    \n    # Convert to Grayscale for efficiency\n    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)\n    \n    cv2.imshow('Drone Vision', gray)\n    if cv2.waitKey(1) & 0xFF == ord('q'):\n        break"
+  },
+  {
+    id: 4,
+    title: "Voice Command",
+    correctAnswer: "import speech_recognition as sr\nfrom djitellopy import Tello\n\n# Initialize Recognizer\nr = sr.Recognizer()\nmic = sr.Microphone()\n\ndef listen_command():\n    with mic as source:\n        print('Listening...')\n        audio = r.listen(source)\n    try:\n        return r.recognize_google(audio).lower()\n    except: \n        return ''\n\n# Main Loop\ncmd = listen_command()\nif 'take off' in cmd:\n    drone.takeoff()"
+  },
+  {
+    id: 5,
+    title: "Swarm Programming",
+    correctAnswer: "from djitellopy import TelloSwarm\n\n# IPs of the two drones connected to the router\nswarm_ips = ['192.168.10.2', '192.168.10.3']\n\nswarm = TelloSwarm.fromIps(swarm_ips)\nswarm.connect()\n\n# Command both to take off\nswarm.takeoff()\n\n# Perform synchronized flip\nswarm.flip('l')\n\nswarm.land()"
+  }
+];

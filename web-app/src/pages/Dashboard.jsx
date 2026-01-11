@@ -82,43 +82,78 @@ export default function Dashboard() {
 
   // Fetch user data and modules when component loads
   useEffect(() => {
-    // 1. Get user from local storage
-    const storedUser = localStorage.getItem('user');
+    // 1. Get username from localStorage (lightweight session)
+    const storedUsername = localStorage.getItem('username');
     
-    if (storedUser) {
-      const userData = JSON.parse(storedUser);
-      setUsername(userData.username);
+    if (storedUsername) {
+      console.log('[DASHBOARD] User session found:', storedUsername);
+      setUsername(storedUsername);
 
-      // Use the username to fetch their specific progress
-    fetch(`http://127.0.0.1:8000/api/modules/${userData.username}`)
-      .then(res => res.json())
-      .then(data => {
-        setModules(data);
-        setLoading(false);
-      });
+      // 2. Fetch complete user data from MongoDB via backend
+      console.log('[DASHBOARD] Fetching user data from database:', storedUsername);
+      fetch(`http://127.0.0.1:8000/api/auth/me/${storedUsername}`)
+        .then(res => {
+          if (!res.ok) {
+            throw new Error('Failed to fetch user data');
+          }
+          return res.json();
+        })
+        .then(data => {
+          console.log('✅ [DASHBOARD] User data fetched from MongoDB:', data);
+          // Extract modules from the user data
+          const modulesArray = [];
+          const moduleDescriptions = {
+            "1": { title: "Basic Flight", desc: "Takeoff, land, and flips." },
+            "2": { title: "Landing Pad AI", desc: "Precision landing using CV." },
+            "3": { title: "Alphabet Search", desc: "Find letters using the camera." },
+            "4": { title: "Voice Command", desc: "Control via microphone." },
+            "5": { title: "Swarm Control", desc: "Synchronized flight." },
+          };
+          
+          for (let mod_id in data.modules) {
+            const mod_data = data.modules[mod_id];
+            const info = moduleDescriptions[mod_id] || {};
+            modulesArray.push({
+              id: mod_id,
+              title: info.title || "Unknown",
+              description: info.desc || "",
+              is_locked: mod_data.status === "locked",
+              status: mod_data.status
+            });
+          }
+          
+          console.log('✅ [DASHBOARD] Modules formatted:', modulesArray);
+          setModules(modulesArray);
+          setLoading(false);
+        })
+        .catch(err => {
+          console.error('❌ [DASHBOARD] Failed to fetch user data:', err);
+          // Fallback: redirect to login
+          console.warn('[DASHBOARD] Redirecting to login due to fetch error');
+          localStorage.removeItem('username');
+          window.location.href = '/login';
+        });
     } else {
       // If no user is logged in, kick them back to login page
+      console.warn('[DASHBOARD] No user session found. Redirecting to login.');
       window.location.href = '/login';
     }
   }, []);
 
-  // This function runs automatically when the page loads
-  useEffect(() => {
-    fetch('http://127.0.0.1:8000/api/modules') // <--- Talk to Python
-      .then(res => res.json())
-      .then(data => {
-        setModules(data); // Save the Python data to React
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error("Failed to fetch modules:", err);
-        setLoading(false);
-      });
-  }, []);
-
   // Handler for starting a mission
   const handleStartMission = (moduleId) => {
+    console.log('[DASHBOARD] Starting module:', moduleId);
     navigate(`/module/${moduleId}`);
+  };
+
+  // Handler for logout
+  const handleLogout = () => {
+    console.log('[DASHBOARD] User logging out:', username);
+    // Clear all localStorage data
+    console.log('[DASHBOARD] Clearing all localStorage data');
+    localStorage.clear();
+    console.log('[DASHBOARD] All data cleared, session ended');
+    navigate('/login');
   };
 
   if (loading) return <div className="text-white text-center mt-20">Connecting to Ground Station...</div>;
@@ -132,11 +167,17 @@ export default function Dashboard() {
       {/* Header */}
       <nav className="bg-white/10 backdrop-blur-sm px-8 py-4 flex justify-between items-center border-b border-white/10">
         <h1 className="text-2xl font-bold text-white">TelloLearn</h1>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-6">
           <span className="text-white font-medium">Pilot {username}</span>
           <div className="w-10 h-10 bg-slate-200 rounded-full border-2 border-white overflow-hidden">
             <img src={`https://ui-avatars.com/api/?name=${username}&background=random`} alt="Profile" />
           </div>
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition text-sm"
+          >
+            Logout
+          </button>
         </div>
       </nav>
 

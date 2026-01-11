@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 
 // Reusing the same Layout for consistency
@@ -25,6 +25,13 @@ export default function SignUp() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Clear localStorage on component mount
+  useEffect(() => {
+    console.log('[SIGNUP] Clearing localStorage on page load');
+    localStorage.clear();
+    console.log('[SIGNUP] localStorage cleared');
+  }, []);
+
   // 2. Update state on typing
   const handleChange = (e) => {
     setFormData({
@@ -38,9 +45,39 @@ export default function SignUp() {
     e.preventDefault();
     setError('');
     setLoading(true);
+    
+    // Basic frontend validation
+    if (!formData.username || formData.username.trim().length === 0) {
+      setError('Username is required');
+      setLoading(false);
+      return;
+    }
+    
+    if (!formData.email || formData.email.trim().length === 0) {
+      setError('Email is required');
+      setLoading(false);
+      return;
+    }
+    
+    // Simple email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setError('Invalid email format (e.g., user@example.com)');
+      setLoading(false);
+      return;
+    }
+    
+    if (!formData.password || formData.password.length < 6) {
+      setError('Password must be at least 6 characters');
+      setLoading(false);
+      return;
+    }
+    
+    console.log('[SIGNUP] Attempting to register new user:', { username: formData.username, email: formData.email });
 
     try {
       // Connect to the Backend Signup Endpoint
+      console.log('[SIGNUP] Sending request to backend: http://127.0.0.1:8000/api/auth/signup');
       const response = await fetch('http://127.0.0.1:8000/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -48,17 +85,26 @@ export default function SignUp() {
       });
 
       const data = await response.json();
+      console.log('[SIGNUP] Response received:', { status: response.status, data });
 
       if (response.ok) {
-        // SUCCESS: Redirect to Login page so they can sign in
-        alert("Account created successfully! Please Log In.");
-        navigate('/login');
+        // SUCCESS: Store only the username (lightweight session)
+        console.log('✅ [SIGNUP] User registration successful!');
+        // Store only username - all data will be fetched from DB
+        localStorage.setItem('username', data.username);
+        console.log('[SIGNUP] Session stored:', data.username);
+        
+        alert("Account created successfully! Logging you in...");
+        console.log('[SIGNUP] Navigating to dashboard...');
+        navigate('/dashboard');
       } else {
         // FAIL: Show error (e.g., "Username already taken")
-        setError(data.detail || 'Registration failed');
+        console.error('❌ [SIGNUP] Registration failed:', data.detail || data.message || 'Registration failed');
+        setError(data.detail || data.message || 'Registration failed');
       }
     } catch (err) {
-      setError('Cannot connect to Ground Station.');
+      console.error('❌ [SIGNUP] Network/Connection error:', err);
+      setError('Cannot connect to Ground Station. Please check your internet connection.');
     } finally {
       setLoading(false);
     }
