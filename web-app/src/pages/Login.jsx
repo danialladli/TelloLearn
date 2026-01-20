@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { User, Shield } from 'lucide-react'; // Icons
 
 const AuthLayout = ({ title, children }) => (
   <div className="min-h-screen bg-tello-dark flex flex-col justify-center items-center">
@@ -18,6 +19,7 @@ export default function Login() {
   const [formData, setFormData] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedRole, setSelectedRole] = useState('learner');
 
   // Clear localStorage on component mount
   useEffect(() => {
@@ -37,14 +39,10 @@ export default function Login() {
   // 3. The Real Login Logic
   const handleLogin = async (e) => {
     e.preventDefault();
-    setError(''); // Clear previous errors
+    setError('');
     setLoading(true);
-    
-    console.log('[LOGIN] Attempting to login with username:', formData.username);
 
     try {
-      // Send data to Python Backend
-      console.log('[LOGIN] Sending request to backend: http://127.0.0.1:8000/api/auth/login');
       const response = await fetch('http://127.0.0.1:8000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -52,26 +50,43 @@ export default function Login() {
       });
 
       const data = await response.json();
-      console.log('[LOGIN] Response received:', { status: response.status, data });
 
       if (response.ok) {
-        // SUCCESS: Store only the username (lightweight session)
-        console.log('✅ [LOGIN] Authentication successful! Storing session...');
-        // Store only username - all data will be fetched from DB
-        localStorage.setItem('username', data.username);
-        console.log('[LOGIN] Session stored:', data.username);
+        // --- 1. VALIDATION CHECKS ---
         
-        // Go to Dashboard
-        console.log('[LOGIN] Navigating to dashboard...');
-        navigate('/dashboard');
+        // Scenario A: User selected "Admin" but is actually a "Learner"
+        if (selectedRole === 'admin' && data.role !== 'admin') {
+          setError("Access Denied: You are not an Admin.");
+          setLoading(false);
+          return;
+        }
+
+        // Scenario B: User selected "Learner" but is actually an "Admin"
+        // [NEW CHECK] This fixes your issue
+        if (selectedRole === 'learner' && data.role === 'admin') {
+          setError("Access Denied: Account registered as Admin. Please toggle to Admin to login.");
+          setLoading(false);
+          return;
+        }
+
+        // --- 2. SUCCESS ---
+        // Store Session
+        localStorage.setItem('username', data.username);
+        localStorage.setItem('role', data.role);
+        localStorage.setItem('user_token', data.token);
+
+        // Route based on Role
+        if (data.role === 'admin') {
+          navigate('/admin-dashboard');
+        } else {
+          navigate('/dashboard');
+        }
       } else {
-        // FAIL: Show error message from backend
-        console.error('❌ [LOGIN] Authentication failed:', data.detail || 'Login failed');
         setError(data.detail || 'Login failed');
       }
     } catch (err) {
-      console.error('❌ [LOGIN] Network/Connection error:', err);
-      setError('Cannot connect to Ground Station (Backend offline?)');
+      console.error(err);
+      setError('Cannot connect to Ground Station');
     } finally {
       setLoading(false);
     }
@@ -79,6 +94,24 @@ export default function Login() {
 
   return (
     <AuthLayout title="TelloLearn">
+      {/* ROLE TOGGLE */}
+      <div className="flex bg-slate-700/50 p-1 rounded-full mb-6">
+        <button 
+          type="button"
+          onClick={() => setSelectedRole('learner')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-full transition ${selectedRole === 'learner' ? 'bg-blue-500 text-white shadow-lg' : 'text-slate-300 hover:text-white'}`}
+        >
+          <User size={16} /> Learner
+        </button>
+        <button 
+          type="button"
+          onClick={() => setSelectedRole('admin')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-full transition ${selectedRole === 'admin' ? 'bg-red-500 text-white shadow-lg' : 'text-slate-300 hover:text-white'}`}
+        >
+          <Shield size={16} /> Admin
+        </button>
+      </div>
+
       <form onSubmit={handleLogin} className="flex flex-col gap-4">
         
         {/* Error Message Banner */}

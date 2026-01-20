@@ -6,6 +6,8 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import SignUp from './pages/SignUp';
 import Module from './pages/Module';
+import AdminDashboard from './pages/AdminDashboard';
+import ViewProgress from './pages/ViewProgress';
 
 function App() {
   return (
@@ -16,6 +18,8 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/module/:moduleId" element={<Module />} />
+        <Route path="/admin-dashboard" element={<AdminDashboard />} />
+        <Route path="/progress" element={<ViewProgress />} />
       </Routes>
     </BrowserRouter>
   );

@@ -7,3 +7,9 @@ db = client.TelloLearnDB
 
 def get_user_collection():
     return db.User
+
+def get_module_collection():
+    return db.Modules
+
+def get_activity_collection():
+    return db.Activities

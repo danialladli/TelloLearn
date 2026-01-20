@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, Body
 from fastapi.exceptions import RequestValidationError
 from djitellopy import Tello
 import logging
@@ -9,9 +9,8 @@ from bson.objectid import ObjectId
 
 # Import security functions (Updated)
 from security import hash_password, verify_password, create_access_token, decode_access_token
-
-from database import get_user_collection, client, db
-from models import UserSignup, UserLogin, UserInDB, ProgressUpdate
+from database import get_activity_collection, get_user_collection, get_module_collection, client, db
+from models import LogRequest, UserSignup, UserLogin, UserInDB, ProgressUpdate, ModuleDefinition
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -64,6 +63,69 @@ async def get_current_user_id(authorization: str = Header(None)):
         return payload["sub"] # Returns the User ID from the token
     except Exception:
         raise HTTPException(status_code=401, detail="Malformed Token")
+    
+async def sync_user_modules(user_id: str):
+    """
+    Checks for missing modules in the user's profile and adds them.
+    Also handles 'Auto-Unlock' if the previous module is complete.
+    """
+    user_collection = get_user_collection()
+    module_collection = get_module_collection()
+
+    # 1. Get the User and All Module Definitions
+    user = await user_collection.find_one({"_id": ObjectId(user_id)})
+    all_modules = await module_collection.find({}).to_list(length=100)
+    
+    if not user:
+        return
+
+    user_modules = user.get("modules", {})
+    updates = {}
+    has_changes = False
+
+    # 2. Iterate through ALL defined modules
+    for mod in all_modules:
+        mod_id = str(mod["id"]) # Ensure ID is string
+        
+        # If this module is MISSING from the user's data
+        if mod_id not in user_modules:
+            has_changes = True
+            
+            # --- DETERMINE STATUS ---
+            # Default to locked
+            new_status = "locked"
+            
+            # Logic: If it's Module 1, it's always Active.
+            if mod_id == "1":
+                new_status = "active"
+            else:
+                # Check previous module (Current ID - 1)
+                # We assume IDs are numeric strings "1", "2", "3"...
+                try:
+                    prev_id = str(int(mod_id) - 1)
+                    # Get status of previous module from USER data (or updates dict if we just added it)
+                    prev_status = user_modules.get(prev_id, {}).get("status")
+                    
+                    # If previous is done, UNLOCK this one!
+                    if prev_status == "completed":
+                        new_status = "active"
+                except:
+                    pass # Fallback to locked if ID math fails
+            
+            # Prepare the update
+            # We treat the new entry as a ModuleProgress dict
+            updates[f"modules.{mod_id}"] = {
+                "status": new_status,
+                "score": 0
+            }
+
+    # 3. Write to Database (Only if needed)
+    if has_changes:
+        logger.info(f"[SYNC] Updating user {user['username']} with {len(updates)} new modules.")
+        await user_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": updates}
+        )
 
 @app.on_event("startup")
 async def startup_event():
@@ -86,6 +148,16 @@ async def startup_event():
 def read_root():
     return {"status": "Ground Station Online", "project": "Tello FYP"}
 
+async def log_activity(user_id: str, action: str, details: str):
+    collection = get_activity_collection() # Make sure to import this too!
+    log_entry = {
+        "user_id": user_id,
+        "action": action,
+        "details": details,
+        "timestamp": datetime.utcnow()
+    }
+    await collection.insert_one(log_entry)
+
 # --- 1. SIGN UP ENDPOINT (Updated with Token) ---
 @app.post("/api/auth/signup")
 async def signup(user: UserSignup):
@@ -96,21 +168,37 @@ async def signup(user: UserSignup):
     existing_user = await collection.find_one({"username": user.username})
     if existing_user:
         raise HTTPException(status_code=400, detail="Username already taken")
-
+    
+    # Hash the password
     hashed_pwd = hash_password(user.password)
 
+    # Hack for demo: If username contains 'admin', make them admin
+    role = "admin" if "admin" in user.username.lower() else "learner"
+
     # Create new user with timestamp
-    new_user_data = UserInDB(
-        username=user.username,
-        email=user.email,
-        password=hashed_pwd,
-        last_updated_at=datetime.utcnow() 
-    )
+    new_user_data = {
+        "username": user.username,
+        "email": user.email,
+        "password": hashed_pwd,
+        "role": role,
+        "last_updated_at": datetime.utcnow()
+    }
+
+    if role == "learner":
+        new_user_data["modules"] = {
+            "1": {"status": "active", "score": 0},
+            "2": {"status": "locked", "score": 0},
+            "3": {"status": "locked", "score": 0},
+            "4": {"status": "locked", "score": 0},
+            "5": {"status": "locked", "score": 0},
+        }
     
     try:
-        result = await collection.insert_one(new_user_data.model_dump())
+        result = await collection.insert_one(new_user_data)
+        # Log the activity
+        await log_activity(str(result.inserted_id), "ACCOUNT_CREATED", "Joined the Flight Academy")
         
-        # [NEW] Generate Token immediately so user is logged in
+        # Generate Token immediately so user is logged in
         token = create_access_token({"sub": str(result.inserted_id)})
         
         return {
@@ -120,7 +208,8 @@ async def signup(user: UserSignup):
             "user": {
                 "id": str(result.inserted_id),
                 "username": user.username,
-                "email": user.email
+                "email": user.email,
+                "role": role
             }
         }
     except Exception as e:
@@ -134,26 +223,32 @@ async def login(user: UserLogin):
     
     # 1. Find user
     db_user = await collection.find_one({"username": user.username})
-    if not db_user:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    # 2. Verify password
+    if not db_user or not verify_password(user.password, db_user["password"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    # 2. Verify Password
-    if not verify_password(user.password, db_user["password"]):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+    # --- SYNC MODULES BEFORE RETURNING RESPONSE ---
+    await sync_user_modules(str(db_user["_id"]))
     
     # 3. [NEW] Generate JWT Token
     access_token = create_access_token(data={"sub": str(db_user["_id"])})
     
-    logger.info(f"✅ [LOGIN] Success: {user.username}")
+    logger.info(f"✅ [LOGIN] Success: {user.username} ({db_user.get('role', 'learner')})")
     
-    return {
+    response = {
         "status": "success",
-        "token": access_token, # Mobile uses this
+        "token": access_token,
         "username": db_user["username"],
         "id": str(db_user["_id"]),
-        "modules": db_user["modules"]
+        "role": db_user.get("role", "learner")
     }
 
+    # 4. Only attach modules if they exist (Admins won't have them)
+    if "modules" in db_user:
+        response["modules"] = db_user["modules"]
+
+    return response
 # --- 3. [NEW] SYNC ENDPOINT (Mobile Specific) ---
 @app.get("/api/user/sync")
 async def sync_user_data(user_id: str = Depends(get_current_user_id)):
@@ -178,44 +273,62 @@ async def sync_user_data(user_id: str = Depends(get_current_user_id)):
 # --- 4. UPDATE PROGRESS (Updated Timestamp) ---
 @app.post("/api/update-progress")
 async def update_progress(update: ProgressUpdate):
-    collection = get_user_collection()
+    user_collection = get_user_collection()
+    module_collection = get_module_collection()
     
     try:
         user_obj_id = ObjectId(update.user_id)
+        user = await user_collection.find_one({"_id": user_obj_id})
         
-        # 1. Fetch User
-        user = await collection.find_one({"_id": user_obj_id})
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        # 2. Update Status AND Timestamp
-        logger.info(f"[UPDATE] Marking Module {update.module_id} complete for {user['username']}")
-        
-        await collection.update_one(
+        # --- 1. ALWAYS UPDATE STATUS ---
+        await user_collection.update_one(
             {"_id": user_obj_id},
             {
                 "$set": {
                     f"modules.{update.module_id}.status": "completed",
-                    "last_updated_at": datetime.utcnow() # [NEW]
+                    "last_updated_at": datetime.utcnow()
                 }
             }
         )
         
-        # 3. Unlock Next Module
+        # --- 2. ALWAYS LOG ACTIVITY (The Fix) ---
+        # We removed the 'if current_status != completed' check.
+        # If the user put in the effort to pass the code again, we record it.
+        # Ensure you have the log_activity helper imported!
+        await log_activity(
+            update.user_id, 
+            "MODULE_COMPLETED", 
+            f"Completed Module {update.module_id}"
+        )
+
+        # --- 3. UNLOCK NEXT MODULE ---
         next_module_id = str(int(update.module_id) + 1)
-        if int(next_module_id) <= 5:
-            await collection.update_one(
-                {"_id": user_obj_id},
-                {
-                    "$set": {
-                        f"modules.{next_module_id}.status": "active",
-                        "last_updated_at": datetime.utcnow()
+        next_module_exists = await module_collection.find_one({"id": next_module_id})
+
+        if next_module_exists:
+            next_mod_status = user.get("modules", {}).get(next_module_id, {}).get("status", "locked")
+            
+            if next_mod_status == "locked":
+                logger.info(f"[UPDATE] Unlocking Module {next_module_id}")
+                await user_collection.update_one(
+                    {"_id": user_obj_id},
+                    {
+                        "$set": {
+                            f"modules.{next_module_id}.status": "active",
+                            "last_updated_at": datetime.utcnow()
+                        }
                     }
+                )
+                return {
+                    "status": "success", 
+                    "message": f"Module {next_module_id} unlocked!", 
+                    "next_module_unlocked": next_module_id
                 }
-            )
-            return {"status": "success", "message": f"Module {next_module_id} unlocked!"}
         
-        return {"status": "success", "message": "All modules completed!"}
+        return {"status": "success", "message": "Mission Recorded", "next_module_unlocked": None}
     
     except Exception as e:
         logger.error(f"❌ [UPDATE] Error: {e}")
@@ -223,6 +336,19 @@ async def update_progress(update: ProgressUpdate):
 
 # --- EXISTING PUBLIC ENDPOINTS (Web/Public) ---
 
+@app.get("/api/modules")
+async def get_modules():
+    """Get all module definitions (Merged from DB)"""
+    collection = get_module_collection()
+    modules_cursor = collection.find({})
+    modules = []
+    async for mod in modules_cursor:
+        mod["_id"] = str(mod["_id"])
+        modules.append(mod)
+
+    return modules
+
+"""
 @app.get("/api/modules")
 def get_all_modules():
     return [
@@ -232,6 +358,7 @@ def get_all_modules():
         {"id": 4, "title": "Voice Command", "description": "Control via microphone.", "is_locked": True},
         {"id": 5, "title": "Swarm Control", "description": "Synchronized flight.", "is_locked": True},
     ]
+"""
 
 @app.get("/drone/status")
 def get_status():
@@ -243,6 +370,114 @@ def get_status():
         }
     except:
         return {"error": "Drone disconnected"}
+    
+# --- ADMIN ENDPOINTS ---
+
+# Read all users (for Admin Dashboard)
+@app.get("/api/admin/users")
+async def get_all_users():
+    """Fetch all users for the Admin Dashboard"""
+    collection = get_user_collection()
+    users_cursor = collection.find({})
+    users = []
+    async for user in users_cursor:
+        users.append({
+            "id": str(user["_id"]),
+            "username": user["username"],
+            "email": user["email"],
+            "role": user.get("role", "learner")
+        })
+    return users
+
+# Delete a user (for Admin Dashboard)
+@app.delete("/api/admin/users/{user_id}")
+async def delete_user(user_id: str):
+    """Delete a Learner"""
+    collection = get_user_collection()
+    result = await collection.delete_one({"_id": ObjectId(user_id)})
+    if result.deleted_count == 1:
+        return {"status": "success", "message": "User deleted"}
+    raise HTTPException(status_code=404, detail="User not found")
+
+# Create a new module (for Admin Dashboard)
+@app.post("/api/admin/modules")
+async def create_module(module: ModuleDefinition):
+    """Create or Update a Module"""
+    collection = get_module_collection()
+    # Upsert based on ID
+    await collection.update_one(
+        {"id": module.id}, 
+        {"$set": module.model_dump()}, 
+        upsert=True
+    )
+    return {"status": "success", "message": f"Module {module.id} saved"}
+
+# Delete a module (for Admin Dashboard)
+@app.delete("/api/admin/modules/{module_id}")
+async def delete_module(module_id: str):
+    module_collection = get_module_collection()
+    
+    # 1. Delete the specific module
+    result = await module_collection.delete_one({"id": module_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Module not found")
+    
+    # 2. RE-INDEXING LOGIC
+    # Find all modules with ID greater than the deleted one
+    # We need to convert string IDs to integers for comparison
+    
+    # Fetch ALL modules
+    all_modules = await module_collection.find({}).to_list(length=1000)
+    
+    # Filter for modules that need shifting (ID > deleted_id)
+    deleted_id_int = int(module_id)
+    
+    for mod in all_modules:
+        try:
+            current_id_int = int(mod["id"])
+            
+            if current_id_int > deleted_id_int:
+                # Calculate new ID (shift down by 1)
+                new_id = str(current_id_int - 1)
+                
+                # Update the module in the database
+                await module_collection.update_one(
+                    {"_id": mod["_id"]},
+                    {"$set": {"id": new_id}}
+                )
+                logger.info(f"Refactored Module {current_id_int} -> {new_id}")
+                
+        except ValueError:
+            continue # Skip if ID is not a number
+            
+    return {"status": "success", "message": "Module deleted and IDs re-indexed"}
+
+# --- ACTIVITY LOG ENDPOINTS ---
+
+# Create a new activity log
+@app.post("/api/activity/log")
+async def create_log(log_data: LogRequest, user_id: str = Depends(get_current_user_id)):
+    
+    await log_activity(user_id, log_data.action, log_data.details)
+    return {"status": "success"}
+
+# Get activity logs for the current user
+@app.get("/api/activity")
+async def get_my_activity(user_id: str = Depends(get_current_user_id)):
+    """Fetch timeline for the ViewProgress page"""
+    collection = get_activity_collection()
+    # Find logs for this user, Sort by Timestamp DESC (-1)
+    cursor = collection.find({"user_id": user_id}).sort("timestamp", -1)
+    
+    logs = []
+    async for log in cursor:
+        logs.append({
+            "id": str(log["_id"]),
+            "action": log["action"],
+            "details": log["details"],
+            "timestamp": log["timestamp"]
+        })
+    return logs
 
 # Legacy endpoint for web compatibility (if needed)
 @app.get("/api/auth/me/{username}")

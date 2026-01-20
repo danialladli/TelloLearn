@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, Play, CheckCircle } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 const MODULE_IMAGES = {
   "1": "./assets/basic_flight_control.png",
@@ -82,67 +82,81 @@ export default function Dashboard() {
 
   // Fetch user data and modules when component loads
   useEffect(() => {
-    // 1. Get username from localStorage (lightweight session)
     const storedUsername = localStorage.getItem('username');
     
-    if (storedUsername) {
-      console.log('[DASHBOARD] User session found:', storedUsername);
-      setUsername(storedUsername);
-
-      // 2. Fetch complete user data from MongoDB via backend
-      console.log('[DASHBOARD] Fetching user data from database:', storedUsername);
-      fetch(`http://127.0.0.1:8000/api/auth/me/${storedUsername}`)
-        .then(res => {
-          if (!res.ok) {
-            throw new Error('Failed to fetch user data');
-          }
-          return res.json();
-        })
-        .then(data => {
-          console.log('✅ [DASHBOARD] User data fetched from MongoDB:', data);
-          // Extract modules from the user data
-          const modulesArray = [];
-          const moduleDescriptions = {
-            "1": { title: "Basic Flight", desc: "Takeoff, land, and flips." },
-            "2": { title: "Landing Pad AI", desc: "Precision landing using CV." },
-            "3": { title: "Alphabet Search", desc: "Find letters using the camera." },
-            "4": { title: "Voice Command", desc: "Control via microphone." },
-            "5": { title: "Swarm Control", desc: "Synchronized flight." },
-          };
-          
-          for (let mod_id in data.modules) {
-            const mod_data = data.modules[mod_id];
-            const info = moduleDescriptions[mod_id] || {};
-            modulesArray.push({
-              id: mod_id,
-              title: info.title || "Unknown",
-              description: info.desc || "",
-              is_locked: mod_data.status === "locked",
-              status: mod_data.status
-            });
-          }
-          
-          console.log('✅ [DASHBOARD] Modules formatted:', modulesArray);
-          setModules(modulesArray);
-          setLoading(false);
-        })
-        .catch(err => {
-          console.error('❌ [DASHBOARD] Failed to fetch user data:', err);
-          // Fallback: redirect to login
-          console.warn('[DASHBOARD] Redirecting to login due to fetch error');
-          localStorage.removeItem('username');
-          window.location.href = '/login';
-        });
-    } else {
-      // If no user is logged in, kick them back to login page
-      console.warn('[DASHBOARD] No user session found. Redirecting to login.');
+    if (!storedUsername || storedUsername === 'undefined' || storedUsername === 'null') {
+      localStorage.clear();
       window.location.href = '/login';
+      return;
     }
+
+    setUsername(storedUsername);
+
+    const fetchData = async () => {
+        try {
+            const [userRes, modulesRes] = await Promise.all([
+                fetch(`http://127.0.0.1:8000/api/auth/me/${storedUsername}`),
+                fetch('http://127.0.0.1:8000/api/modules')
+            ]);
+
+            if (!userRes.ok || !modulesRes.ok) throw new Error("Failed to fetch data");
+
+            const userData = await userRes.json();
+            const allModulesData = await modulesRes.json();
+
+            const mergedModules = allModulesData.map(modDef => {
+                const userProgress = userData.modules && userData.modules[modDef.id];
+                
+                return {
+                    id: modDef.id,
+                    title: modDef.title,
+                    description: modDef.description,
+                    // NEW: Pass the image data through
+                    image_data: modDef.image_data, 
+                    status: userProgress ? userProgress.status : 'locked', 
+                    is_locked: userProgress ? userProgress.status === 'locked' : true
+                };
+            });
+
+            mergedModules.sort((a, b) => parseInt(a.id) - parseInt(b.id));
+
+            setModules(mergedModules);
+            setLoading(false);
+
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    fetchData();
   }, []);
 
   // Handler for starting a mission
-  const handleStartMission = (moduleId) => {
+  const handleStartMission = async (moduleId) => { // Make async
     console.log('[DASHBOARD] Starting module:', moduleId);
+    
+    // 1. Find the module to check its status
+    const targetModule = modules.find(m => m.id === moduleId);
+    if (targetModule && targetModule.status !== 'completed') {
+        const token = localStorage.getItem('user_token');
+        if (token) {
+            const moduleTitle = targetModule.title || "Unknown Module";
+            // Fire and forget log
+            fetch('http://127.0.0.1:8000/api/activity/log', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    action: "MODULE_STARTED",
+                    details: `Started Module ${moduleId}: ${moduleTitle}`
+                })
+        }).catch(err => console.warn("Log failed", err));
+      }
+    }
+
+    // NAVIGATE
     navigate(`/module/${moduleId}`);
   };
 
@@ -166,9 +180,19 @@ export default function Dashboard() {
     <div className="min-h-screen bg-tello-dark pb-20">
       {/* Header */}
       <nav className="bg-white/10 backdrop-blur-sm px-8 py-4 flex justify-between items-center border-b border-white/10">
-        <h1 className="text-2xl font-bold text-white">TelloLearn</h1>
+        <div className="flex items-center gap-8">
+            <h1 className="text-2xl font-bold text-white">TelloLearn</h1>
+            
+            <Link 
+              to="/progress" 
+              className="text-slate-300 hover:text-white font-medium transition duration-200 text-sm"
+            >
+              Flight Log
+            </Link>
+        </div>
+
         <div className="flex items-center gap-6">
-          <span className="text-white font-medium">Pilot {username}</span>
+          <span className="text-white font-medium hidden sm:block">Pilot {username}</span>
           <div className="w-10 h-10 bg-slate-200 rounded-full border-2 border-white overflow-hidden">
             <img src={`https://ui-avatars.com/api/?name=${username}&background=random`} alt="Profile" />
           </div>
