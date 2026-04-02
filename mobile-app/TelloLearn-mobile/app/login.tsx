@@ -17,7 +17,7 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
 // 1. CONFIGURATION
-const API_URL = 'http://10.167.105.239:8000/api'; 
+const API_URL = 'http://10.167.109.168:8000/api'; 
 
 // THEME COLORS (You can replace these with import { COLORS } from '../constants/theme')
 const COLORS = {

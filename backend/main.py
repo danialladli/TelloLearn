@@ -2,7 +2,8 @@ from fastapi import FastAPI, HTTPException, Depends, Header, Body
 from fastapi.exceptions import RequestValidationError
 from djitellopy import Tello
 import logging
-from datetime import datetime
+import secrets
+from datetime import datetime, timedelta
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from bson.objectid import ObjectId
@@ -10,7 +11,7 @@ from bson.objectid import ObjectId
 # Import security functions (Updated)
 from security import hash_password, verify_password, create_access_token, decode_access_token
 from database import get_activity_collection, get_user_collection, get_module_collection, client, db
-from models import LogRequest, UserSignup, UserLogin, UserInDB, ProgressUpdate, ModuleDefinition
+from models import LogRequest, UserSignup, UserLogin, UserInDB, ProgressUpdate, ModuleDefinition, ForgotPasswordRequest, ResetPasswordRequest
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -249,7 +250,7 @@ async def login(user: UserLogin):
         response["modules"] = db_user["modules"]
 
     return response
-# --- 3. [NEW] SYNC ENDPOINT (Mobile Specific) ---
+# --- 3. SYNC ENDPOINT (Mobile Specific) ---
 @app.get("/api/user/sync")
 async def sync_user_data(user_id: str = Depends(get_current_user_id)):
     """
@@ -493,3 +494,59 @@ async def get_current_user_legacy(username: str):
         "id": str(user["_id"]),
         "modules": user["modules"]
     }
+
+# --- FORGOT PASSWORD ENDPOINTS ---
+# --- 1. REQUEST RESET LINK ---
+@app.post("/api/auth/forgot-password")
+async def forgot_password(req: ForgotPasswordRequest):
+    collection = get_user_collection()
+    user = await collection.find_one({"email": req.email})
+    
+    # Security Best Practice: Do not reveal if the email exists or not to prevent user enumeration
+    if not user:
+        return {"status": "success", "message": "If that email matches an account, a reset link has been sent."}
+    
+    # Generate a secure 32-character token
+    reset_token = secrets.token_urlsafe(32)
+    expiration = datetime.utcnow() + timedelta(hours=1) # Token valid for 1 hour
+    
+    # Save token to a new collection in MongoDB
+    await db.PasswordResets.insert_one({
+        "email": req.email,
+        "token": reset_token,
+        "expires_at": expiration
+    })
+    
+    # MOCK EMAIL: Print the link to the terminal so you can click it to test the frontend
+    reset_link = f"http://localhost:5173/reset-password?token={reset_token}"
+    print("\n" + "="*50)
+    print(f"📧 EMAIL MOCK TO: {req.email}")
+    print(f"🔗 Click here to reset your password: {reset_link}")
+    print("="*50 + "\n")
+    
+    return {"status": "success", "message": "If that email matches an account, a reset link has been sent."}
+
+# --- 2. CONFIRM NEW PASSWORD ---
+@app.post("/api/auth/reset-password")
+async def reset_password(req: ResetPasswordRequest):
+    # Find the token in the database
+    reset_record = await db.PasswordResets.find_one({"token": req.token})
+    
+    # Check if token exists and hasn't expired
+    if not reset_record or reset_record["expires_at"] < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token.")
+    
+    # Hash the new password
+    hashed_password = hash_password(req.new_password)
+    
+    # Update the user's password
+    collection = get_user_collection()
+    await collection.update_one(
+        {"email": reset_record["email"]},
+        {"$set": {"password": hashed_password}}
+    )
+    
+    # Delete the used token (and any other old tokens for this email)
+    await db.PasswordResets.delete_many({"email": reset_record["email"]})
+    
+    return {"status": "success", "message": "Password has been successfully reset."}

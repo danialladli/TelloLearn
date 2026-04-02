@@ -8,6 +8,8 @@ import SignUp from './pages/SignUp';
 import Module from './pages/Module';
 import AdminDashboard from './pages/AdminDashboard';
 import ViewProgress from './pages/ViewProgress';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 
 function App() {
   return (
@@ -15,6 +17,8 @@ function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/module/:moduleId" element={<Module />} />
