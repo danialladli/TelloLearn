@@ -33,12 +33,19 @@ class UserInDB(BaseModel):
 class UserSignup(BaseModel):
     username: str
     email: EmailStr
-    password: str = Field(..., min_length=6) 
+    password: str = Field(..., min_length=6)
+    avatar: Optional[str] = None
 
 # 3. UserLogin: This is what React sends to login
 class UserLogin(BaseModel):
     username: str
     password: str = Field(..., max_length=50)
+
+class UserUpdate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    avatar: Optional[str] = None
 
 class ProgressUpdate(BaseModel):
     user_id: str

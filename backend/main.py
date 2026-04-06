@@ -11,7 +11,7 @@ from bson.objectid import ObjectId
 # Import security functions (Updated)
 from security import hash_password, verify_password, create_access_token, decode_access_token
 from database import get_activity_collection, get_user_collection, get_module_collection, client, db
-from models import LogRequest, UserSignup, UserLogin, UserInDB, ProgressUpdate, ModuleDefinition, ForgotPasswordRequest, ResetPasswordRequest
+from models import LogRequest, UserSignup, UserLogin, UserInDB, ProgressUpdate, ModuleDefinition, ForgotPasswordRequest, ResetPasswordRequest, UserUpdate
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -182,7 +182,8 @@ async def signup(user: UserSignup):
         "email": user.email,
         "password": hashed_pwd,
         "role": role,
-        "last_updated_at": datetime.utcnow()
+        "last_updated_at": datetime.utcnow(),
+        "avatar": ""
     }
 
     if role == "learner":
@@ -489,10 +490,11 @@ async def get_current_user_legacy(username: str):
         raise HTTPException(status_code=404, detail="User not found")
     return {
         "status": "success",
-        "username": user["username"],
-        "email": user["email"],
+        "username": user.get("username"),
+        "email": user.get("email"),
         "id": str(user["_id"]),
-        "modules": user["modules"]
+        "modules": user.get("modules", {}),
+        "avatar": user.get("avatar", "")
     }
 
 # --- FORGOT PASSWORD ENDPOINTS ---
@@ -550,3 +552,67 @@ async def reset_password(req: ResetPasswordRequest):
     await db.PasswordResets.delete_many({"email": reset_record["email"]})
     
     return {"status": "success", "message": "Password has been successfully reset."}
+
+# --- UPDATE USER PROFILE ENDPOINT ---
+@app.put("/api/auth/users/{user_id}")
+async def update_user_profile(user_id: str, update_data: UserUpdate):
+    collection = get_user_collection()
+    
+    try:
+        user_obj_id = ObjectId(user_id)
+        existing_user = await collection.find_one({"_id": user_obj_id})
+        
+        if not existing_user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        update_dict = {}
+
+        # 1. Check & Add Username
+        if update_data.username and update_data.username != existing_user.get("username"):
+            # Ensure the new username isn't taken
+            username_check = await collection.find_one({"username": update_data.username})
+            if username_check:
+                raise HTTPException(status_code=400, detail="Username is already taken.")
+            update_dict["username"] = update_data.username
+
+        # 2. Check & Add Email
+        if update_data.email and update_data.email != existing_user.get("email"):
+            email_check = await collection.find_one({"email": update_data.email})
+            if email_check:
+                raise HTTPException(status_code=400, detail="Email is already registered.")
+            update_dict["email"] = update_data.email
+
+        # 3. Hash & Add Password
+        if update_data.password:
+            # Assuming you are using the hash_password function we discussed earlier
+            update_dict["password"] = hash_password(update_data.password)
+
+        # 4. Add Avatar
+        if update_data.avatar:
+            update_dict["avatar"] = update_data.avatar
+
+        # 5. Execute Update
+        if update_dict:
+            await collection.update_one(
+                {"_id": user_obj_id},
+                {"$set": update_dict}
+            )
+            
+            # Fetch the updated user to return fresh data
+            updated_user = await collection.find_one({"_id": user_obj_id})
+            
+            return {
+                "status": "success", 
+                "message": "Profile updated successfully.",
+                "username": updated_user.get("username"),
+                "avatar": updated_user.get("avatar")
+            }
+        
+        return {"status": "success", "message": "No changes were made."}
+
+    except Exception as e:
+        # If it's already an HTTPException (like our username taken error), raise it directly
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Profile update error: {e}")
+        raise HTTPException(status_code=500, detail="Database error updating profile.")

@@ -43,9 +43,12 @@ export default function Landing() {
         </div>
         
         {/* Drone Image (Right Side) */}
-        <div className="absolute right-[-50px] top-10 w-[600px]">
-           {/* Replace with your drone image */}
-           <img src="/drone-hero.png" alt="Tello Drone" className="drop-shadow-2xl" />
+        <div className="absolute right-[-20px] lg:right-[-50px] top-1/2 -translate-y-1/2 w-[350px] md:w-[450px] lg:w-[550px] pointer-events-none">
+            <img 
+                src="/assets/tello.png" 
+                alt="Tello Drone" 
+                className="w-full h-auto drop-shadow-2xl" 
+            />
         </div>
       </header>
 

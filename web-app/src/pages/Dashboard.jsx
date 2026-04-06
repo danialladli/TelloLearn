@@ -3,11 +3,11 @@ import { Lock, Play, CheckCircle } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 
 const MODULE_IMAGES = {
-  "1": "./assets/basic_flight_control.png",
-  "2": "./assets/landing_pad.png",
-  "3": "./assets/alphabet_recognition.png",
-  "4": "./assets/shortest_path.png",
-  "5": "./assets/swarm.png"
+  "1": "./assets/Dashboard/basic_flight_control.png",
+  "2": "./assets/Dashboard/landing_pad.png",
+  "3": "./assets/Dashboard/alphabet_recognition.png",
+  "4": "./assets/Dashboard/shortest_path.png",
+  "5": "./assets/Dashboard/swarm.png"
 };
 
 // Reusable Module Card Component
@@ -75,9 +75,16 @@ const ModuleCard = ({ module, onStart }) => {
 };
 
 export default function Dashboard() {
-  const [username, setUsername] = useState('Pilot');
-  const [modules, setModules] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [username, setUsername] = useState(() => localStorage.getItem('username') || 'Pilot');
+  const [avatar, setAvatar] = useState(() => localStorage.getItem('cached_avatar') || null);
+  const [modules, setModules] = useState(() => {
+    const cached = localStorage.getItem('cached_modules');
+    return cached ? JSON.parse(cached) : [];
+  });
+  const [loading, setLoading] = useState(() => {
+    const cached = localStorage.getItem('cached_modules');
+    return cached ? false : true; 
+  });
   const navigate = useNavigate();
 
   // Fetch user data and modules when component loads
@@ -92,6 +99,7 @@ export default function Dashboard() {
 
     setUsername(storedUsername);
 
+    // --- BACKGROUND FETCH ---
     const fetchData = async () => {
         try {
             const [userRes, modulesRes] = await Promise.all([
@@ -104,6 +112,11 @@ export default function Dashboard() {
             const userData = await userRes.json();
             const allModulesData = await modulesRes.json();
 
+            // Update state
+            setAvatar(userData.avatar);
+            // Save to cache for next time
+            localStorage.setItem('cached_avatar', userData.avatar || '');
+
             const mergedModules = allModulesData.map(modDef => {
                 const userProgress = userData.modules && userData.modules[modDef.id];
                 
@@ -111,7 +124,6 @@ export default function Dashboard() {
                     id: modDef.id,
                     title: modDef.title,
                     description: modDef.description,
-                    // NEW: Pass the image data through
                     image_data: modDef.image_data, 
                     status: userProgress ? userProgress.status : 'locked', 
                     is_locked: userProgress ? userProgress.status === 'locked' : true
@@ -120,19 +132,25 @@ export default function Dashboard() {
 
             mergedModules.sort((a, b) => parseInt(a.id) - parseInt(b.id));
 
+            // Update state
             setModules(mergedModules);
+            // Save to cache for next time
+            localStorage.setItem('cached_modules', JSON.stringify(mergedModules));
+
+            // Ensure loading is false (if cache was empty on very first login)
             setLoading(false);
 
         } catch (err) {
             console.error(err);
+            setLoading(false);
         }
     };
-
+    // Always run the fetch to ensure our cache isn't stale
     fetchData();
   }, []);
 
   // Handler for starting a mission
-  const handleStartMission = async (moduleId) => { // Make async
+  const handleStartMission = async (moduleId) => { 
     console.log('[DASHBOARD] Starting module:', moduleId);
     
     // 1. Find the module to check its status
@@ -193,9 +211,21 @@ export default function Dashboard() {
 
         <div className="flex items-center gap-6">
           <span className="text-white font-medium hidden sm:block">Pilot {username}</span>
-          <div className="w-10 h-10 bg-slate-200 rounded-full border-2 border-white overflow-hidden">
-            <img src={`https://ui-avatars.com/api/?name=${username}&background=random`} alt="Profile" />
-          </div>
+          
+          {/* Profile Picture Link */}
+          <Link 
+            to="/profile" 
+            className="w-10 h-10 bg-slate-200 rounded-full border-2 border-white overflow-hidden hover:scale-110 hover:border-blue-400 transition-all cursor-pointer block shadow-md"
+            title="Edit Profile"
+          >
+            <img 
+              // Check if avatar exists and isn't empty, otherwise use fallback
+              src={avatar || `https://ui-avatars.com/api/?name=${username}&background=random`} 
+              alt="Profile" 
+              className="w-full h-full object-cover"
+            />
+          </Link>
+
           <button
             onClick={handleLogout}
             className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition text-sm"

@@ -10,6 +10,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import ViewProgress from './pages/ViewProgress';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import UserProfile from './pages/UserProfile';
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
         <Route path="/module/:moduleId" element={<Module />} />
         <Route path="/admin-dashboard" element={<AdminDashboard />} />
         <Route path="/progress" element={<ViewProgress />} />
+        <Route path="/profile" element={<UserProfile />} />
       </Routes>
     </BrowserRouter>
   );
