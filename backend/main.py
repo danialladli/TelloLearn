@@ -6,6 +6,7 @@ import secrets
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from bson.objectid import ObjectId
 
 # Import security functions (Updated)
@@ -19,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 # Initialize app
 app = FastAPI()
+
+# Mount static files (web-app assets) to the network.
+app.mount("/assets", StaticFiles(directory="../web-app/assets"), name="assets")
 
 # Global Tello object
 tello = Tello()
@@ -251,6 +255,7 @@ async def login(user: UserLogin):
         response["modules"] = db_user["modules"]
 
     return response
+
 # --- 3. SYNC ENDPOINT (Mobile Specific) ---
 @app.get("/api/user/sync")
 async def sync_user_data(user_id: str = Depends(get_current_user_id)):
@@ -269,6 +274,7 @@ async def sync_user_data(user_id: str = Depends(get_current_user_id)):
         "username": user["username"],
         "email": user["email"],
         "modules": user["modules"],
+        "avatar": user.get("avatar", ""),
         "last_updated_at": user.get("last_updated_at", datetime.utcnow())
     }
 
