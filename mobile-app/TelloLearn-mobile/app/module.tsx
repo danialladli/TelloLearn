@@ -1,112 +1,78 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Colors } from '@/constants/theme';
-import { Play, XCircle } from 'lucide-react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
+import { View, Text, ActivityIndicator } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
+
+// Import our new separated component!
+import Module1UI from '@/components/modules/Module1UI';
+//import Module2UI from '@/components/modules/Module2UI';
+//import Module3UI from '@/components/modules/Module3UI';
+//import Module4UI from '@/components/modules/Module4UI';
+//import Module5UI from '@/components/modules/Module5UI';
 
 export default function ModuleScreen() {
-  const router = useRouter();
-  const { id } = useLocalSearchParams(); // Get module ID (e.g., "1")
-  const theme = Colors.dark;
-  const [serverIp, setServerIp] = useState<string | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
+  const { id } = useLocalSearchParams(); 
+  const [moduleData, setModuleData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    AsyncStorage.getItem('serverIp').then(setServerIp);
-  }, []);
+    // Simulate fetching module data from your backend
+    const loadModuleTemplate = async () => {
+      try {
+        // TEMPORARY MOCK: 
+        // Force ID '1' to use the Block Coding template. 
+        // Once your backend is updated, you'll replace this with an axios.get() call.
+        if (id === '1') {
+          setModuleData({ 
+            id: '1', 
+            title: 'Module 1: Basic Flight', 
+            ui_type: 'block_coding' 
+          });
+        } else {
+          setModuleData({ 
+            id: id, 
+            title: `Module ${id}`, 
+            ui_type: 'live_video' 
+          });
+        }
+      } catch (error) {
+        console.error("Failed to load module routing data");
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const handleRun = async () => {
-    setIsRunning(true);
-    try {
-        // Trigger the Python script on the PC
-        // The PC will execute the python code associated with this module
-        await axios.post(`http://${serverIp}:8000/api/execute/${id}`);
-        alert("Mission Started!");
-    } catch (e) {
-        alert("Failed to start mission");
-    } finally {
-        setIsRunning(false);
-    }
-  };
+    loadModuleTemplate();
+  }, [id]);
 
-  return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
+  if (loading || !moduleData) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f172a' }}>
+        <ActivityIndicator size="large" color="#3b82f6" />
+        <Text style={{ color: 'white', marginTop: 10 }}>Loading Mission Environment...</Text>
+      </View>
+    );
+  }
+
+  // --- THE ROUTER ---
+  // Renders the correct UI component based on the database's ui_type!
+  switch (moduleData.ui_type) {
+    case 'block_coding':
+      // We pass the data into the component so it knows its own title!
+      return <Module1UI moduleData={moduleData} />;
       
-      {/* LEFT: Live Drone Feed */}
-      <View style={styles.videoSection}>
-        {serverIp ? (
-            // We use an Image component that constantly reloads the MJPEG stream from Python
-            <Image 
-                source={{ uri: `http://${serverIp}:8000/video_feed` }} 
-                style={styles.videoStream}
-                resizeMode="contain"
-            />
-        ) : (
-            <View style={styles.placeholder}>
-                <ActivityIndicator size="large" color={theme.tint} />
-                <Text style={{color: theme.textSecondary}}>Connecting to Video Feed...</Text>
-            </View>
-        )}
-        
-        {/* Overlay: Module Title */}
-        <View style={styles.overlay}>
-            <Text style={styles.overlayText}>Module {id} Live Feed</Text>
+    case 'live_video':
+      // You will build LiveVideoUI.tsx in the components folder next!
+      return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'black' }}>
+          <Text style={{ color: 'white' }}>Live Video Feed Placeholder for Module {id}</Text>
         </View>
-      </View>
-
-      {/* RIGHT: Controls */}
-      <View style={[styles.controlSection, { borderLeftColor: theme.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
-            <XCircle color={theme.textSecondary} size={30} />
-        </TouchableOpacity>
-
-        <View style={styles.centerControls}>
-            <Text style={[styles.instruction, { color: theme.text }]}>Ready to execute?</Text>
-            <Text style={{color: theme.textSecondary, textAlign: 'center', marginBottom: 30}}>
-                Ensure drone area is clear.
-            </Text>
-
-            <TouchableOpacity 
-                style={[styles.runBtn, { backgroundColor: isRunning ? theme.border : theme.success }]}
-                onPress={handleRun}
-                disabled={isRunning}
-            >
-                {isRunning ? (
-                    <ActivityIndicator color="white" />
-                ) : (
-                    <>
-                        <Play fill="white" color="white" size={30} />
-                        <Text style={styles.runText}>RUN MISSION</Text>
-                    </>
-                )}
-            </TouchableOpacity>
+      );
+      
+    default:
+      return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text>Unsupported Module Template: {moduleData.ui_type}</Text>
         </View>
-      </View>
-    </View>
-  );
+      );
+  }
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, flexDirection: 'row' },
-  
-  // Left Side
-  videoSection: { flex: 0.65, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center', position: 'relative' },
-  videoStream: { width: '100%', height: '100%' },
-  placeholder: { alignItems: 'center', gap: 10 },
-  overlay: { position: 'absolute', top: 20, left: 20, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 5 },
-  overlayText: { color: 'white', fontWeight: 'bold' },
-
-  // Right Side
-  controlSection: { flex: 0.35, backgroundColor: Colors.dark.card, borderLeftWidth: 1, padding: 20 },
-  closeBtn: { alignSelf: 'flex-end' },
-  centerControls: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  instruction: { fontSize: 22, fontWeight: 'bold', marginBottom: 10 },
-  runBtn: { 
-    width: '100%', height: 80, borderRadius: 16, 
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 15,
-    shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 5, elevation: 5
-  },
-  runText: { color: 'white', fontSize: 20, fontWeight: 'bold', letterSpacing: 1 }
-});

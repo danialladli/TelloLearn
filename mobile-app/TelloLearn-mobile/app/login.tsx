@@ -9,25 +9,21 @@ import {
   ActivityIndicator, 
   KeyboardAvoidingView, 
   Platform,
-  Image
+  ScrollView // <-- We need this to make it scrollable!
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { useRouter } from 'expo-router'; 
 import { StatusBar } from 'expo-status-bar';
 
-// 1. CONFIGURATION
-const API_URL = `${process.env.EXPO_PUBLIC_API_URL}/api`;
-
-// THEME COLORS (You can replace these with import { COLORS } from '../constants/theme')
+// THEME COLORS
 const COLORS = {
-  primary: '#007AFF',    // Drone Blue
-  background: '#F2F2F7', // Light Gray
+  primary: '#007AFF',    
+  background: '#F2F2F7', 
   card: '#FFFFFF',
   text: '#1C1C1E',
   subtext: '#8E8E93',
   border: '#E5E5EA',
-  error: '#FF3B30',
 };
 
 export default function LoginScreen() {
@@ -46,7 +42,15 @@ export default function LoginScreen() {
     setLoading(true);
 
     try {
-      const fullUrl = `${API_URL}/auth/login`;
+      // Using the dynamic IP logic we set up previously!
+      const serverIp = await AsyncStorage.getItem('serverIp');
+      if (!serverIp) {
+         Alert.alert("Error", "No server IP found. Please reconnect.");
+         router.replace('./connection');
+         return;
+      }
+
+      const fullUrl = `http://${serverIp}:8000/api/auth/login`;
       console.log(`[LOGIN] Sending credentials to ${fullUrl}...`);
 
       const response = await axios.post(fullUrl, {
@@ -54,15 +58,14 @@ export default function LoginScreen() {
         password: password,
       });
 
-      console.log('[LOGIN] Success:', response.data);
-      
-      const { token, status, modules, id } = response.data;
+      const { token, status, modules, id, avatar } = response.data;
 
       if (status === 'success') {
         await AsyncStorage.setItem('user_token', token);
         await AsyncStorage.setItem('user_id', id);
         await AsyncStorage.setItem('user_username', username);
-        await AsyncStorage.setItem('user_modules', JSON.stringify(modules));
+        // Save avatar if your backend sends it during login too!
+        if (avatar) await AsyncStorage.setItem('user_avatar', avatar); 
 
         router.replace('/dashboard'); 
       } else {
@@ -90,54 +93,64 @@ export default function LoginScreen() {
     >
       <StatusBar style="dark" />
       
-      <View style={styles.header}>
-        <Text style={styles.title}>TelloLearn</Text>
-        <Text style={styles.subtitle}>Drone Pilot Login</Text>
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Username</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. PilotAhmad" 
-            placeholderTextColor="#C7C7CC"
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
+      {/* Wrapping everything in a ScrollView! 
+        flexGrow: 1 ensures it centers the content if the screen is large enough,
+        but allows scrolling if the screen is too small.
+      */}
+      <ScrollView 
+        contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>TelloLearn</Text>
+          <Text style={styles.subtitle}>Drone Pilot Login</Text>
         </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="••••••••"
-            placeholderTextColor="#C7C7CC"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-        </View>
+        <View style={styles.card}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Username</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. PilotAhmad" 
+              placeholderTextColor="#C7C7CC"
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
 
-        <TouchableOpacity 
-          style={styles.button} 
-          onPress={handleLogin}
-          disabled={loading}
-          activeOpacity={0.8}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>Sign In</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Don't have an account? Ask your instructor.</Text>
-      </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="••••••••"
+              placeholderTextColor="#C7C7CC"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+          </View>
+
+          <TouchableOpacity 
+            style={styles.button} 
+            onPress={handleLogin}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Sign In</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Don't have an account? Sign Up on our Web App now!</Text>
+        </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -145,42 +158,46 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    justifyContent: 'center', 
-    padding: 24, 
     backgroundColor: COLORS.background 
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 40, // Adds breathing room at the top/bottom for scrolling
   },
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 30, // Reduced from 40 to tighten the layout
   },
   title: { 
-    fontSize: 32, 
+    fontSize: 28, // Reduced from 32 so it doesn't break onto two lines easily
     fontWeight: '800', 
     color: COLORS.primary,
-    marginBottom: 8,
+    marginBottom: 6,
     letterSpacing: 0.5,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 15, // Slightly smaller
     color: COLORS.subtext,
     fontWeight: '500',
   },
   card: {
     backgroundColor: COLORS.card,
-    borderRadius: 20,
-    padding: 24,
+    borderRadius: 16, // Slightly sharper corners look more modern
+    padding: 20, // Reduced from 24
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5, // Android shadow
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3, 
   },
   inputGroup: { 
-    marginBottom: 20 
+    marginBottom: 16 // Tighter spacing between inputs
   },
   label: { 
-    marginBottom: 8, 
-    fontSize: 14, 
+    marginBottom: 6, 
+    fontSize: 12, // Reduced from 14 for a cleaner look
     fontWeight: '600', 
     color: COLORS.text,
     textTransform: 'uppercase',
@@ -190,31 +207,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9F9F9', 
     borderWidth: 1, 
     borderColor: COLORS.border, 
-    padding: 16, 
-    borderRadius: 12,
-    fontSize: 16,
+    paddingHorizontal: 14, 
+    paddingVertical: 12, // Reduced height significantly!
+    borderRadius: 10, // Sleeker input boxes
+    fontSize: 15,
     color: COLORS.text,
   },
   button: { 
     marginTop: 10,
     backgroundColor: COLORS.primary,
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingVertical: 14, // Reduced height significantly!
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 3,
   },
   buttonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
   },
   footer: {
-    marginTop: 30,
+    marginTop: 25,
     alignItems: 'center',
   },
   footerText: {
