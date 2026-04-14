@@ -173,7 +173,7 @@ export default function Dashboard() {
         })}
 
         {/* Free Fly Card */}
-        <TouchableOpacity style={[styles.freeFly, { backgroundColor: theme.tint }]}>
+        <TouchableOpacity style={[styles.freeFly, { backgroundColor: theme.tint }]} onPress={() => router.push("./free-flight")}>
             <Gamepad2 color="white" size={32} />
             <Text style={styles.ffText}>FREE FLIGHT</Text>
         </TouchableOpacity>

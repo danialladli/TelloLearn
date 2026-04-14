@@ -53,6 +53,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Data Model for MOBILE APP: Joystick Command ---
+class RCCommand(BaseModel):
+    left_right: int  # -100 to 100
+    forward_backward: int # -100 to 100
+    up_down: int     # -100 to 100
+    yaw: int         # -100 to 100
+
 # --- DEPENDENCY: VERIFY TOKEN (NEW) ---
 # This helper function protects routes for Mobile App usage
 async def get_current_user_id(authorization: str = Header(None)):
@@ -461,7 +468,6 @@ async def delete_module(module_id: str):
     return {"status": "success", "message": "Module deleted and IDs re-indexed"}
 
 # --- ACTIVITY LOG ENDPOINTS ---
-
 # Create a new activity log
 @app.post("/api/activity/log")
 async def create_log(log_data: LogRequest, user_id: str = Depends(get_current_user_id)):
@@ -606,6 +612,8 @@ async def update_user_profile(user_id: str, update_data: UserUpdate):
             
             # Fetch the updated user to return fresh data
             updated_user = await collection.find_one({"_id": user_obj_id})
+            if not updated_user:
+                raise HTTPException(status_code=500, detail="Error retrieving updated user data.")
             
             return {
                 "status": "success", 
@@ -622,3 +630,13 @@ async def update_user_profile(user_id: str, update_data: UserUpdate):
             raise e
         logger.error(f"Profile update error: {e}")
         raise HTTPException(status_code=500, detail="Database error updating profile.")
+    
+# --- MOBILE APP: JOYSTICK CONTROL ENDPOINT ---
+@app.post("/api/execute/rc")
+async def execute_rc(cmd: RCCommand):
+    print(f"RC Received -> L/R: {cmd.left_right}, F/B: {cmd.forward_backward}, U/D: {cmd.up_down}, YAW: {cmd.yaw}")
+    
+    # Send directly to the drone via SDK!
+    # tello.send_rc_control(cmd.left_right, cmd.forward_backward, cmd.up_down, cmd.yaw)
+    
+    return {"status": "ok"}
