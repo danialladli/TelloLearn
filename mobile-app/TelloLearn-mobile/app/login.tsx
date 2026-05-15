@@ -42,15 +42,14 @@ export default function LoginScreen() {
     setLoading(true);
 
     try {
-      // Using the dynamic IP logic we set up previously!
-      const serverIp = await AsyncStorage.getItem('serverIp');
+      const serverIp = process.env.EXPO_PUBLIC_API_URL;
       if (!serverIp) {
          Alert.alert("Error", "No server IP found. Please reconnect.");
          router.replace('./connection');
          return;
       }
 
-      const fullUrl = `http://${serverIp}:8000/api/auth/login`;
+      const fullUrl = `${serverIp}/api/auth/login`;
       console.log(`[LOGIN] Sending credentials to ${fullUrl}...`);
 
       const response = await axios.post(fullUrl, {

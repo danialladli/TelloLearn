@@ -4,7 +4,7 @@ import { useLocalSearchParams } from 'expo-router';
 
 // Import our new separated component!
 import Module1UI from '@/components/modules/Module1UI';
-//import Module2UI from '@/components/modules/Module2UI';
+import Module2UI from '@/components/modules/Module2UI';
 //import Module3UI from '@/components/modules/Module3UI';
 //import Module4UI from '@/components/modules/Module4UI';
 //import Module5UI from '@/components/modules/Module5UI';
@@ -57,16 +57,10 @@ export default function ModuleScreen() {
   // Renders the correct UI component based on the database's ui_type!
   switch (moduleData.ui_type) {
     case 'block_coding':
-      // We pass the data into the component so it knows its own title!
       return <Module1UI moduleData={moduleData} />;
       
     case 'live_video':
-      // You will build LiveVideoUI.tsx in the components folder next!
-      return (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'black' }}>
-          <Text style={{ color: 'white' }}>Live Video Feed Placeholder for Module {id}</Text>
-        </View>
-      );
+      return <Module2UI moduleData={moduleData} />;
       
     default:
       return (

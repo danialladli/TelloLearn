@@ -3,16 +3,21 @@ from fastapi.exceptions import RequestValidationError
 from djitellopy import Tello
 import logging
 import secrets
+import time
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
 from bson.objectid import ObjectId
+from typing import List
 
-# Import security functions (Updated)
+# Import security functions
 from security import hash_password, verify_password, create_access_token, decode_access_token
 from database import get_activity_collection, get_user_collection, get_module_collection, client, db
 from models import LogRequest, UserSignup, UserLogin, UserInDB, ProgressUpdate, ModuleDefinition, ForgotPasswordRequest, ResetPasswordRequest, UserUpdate
+
+from tello_manager import TelloManager
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -24,8 +29,8 @@ app = FastAPI()
 # Mount static files (web-app assets) to the network.
 app.mount("/assets", StaticFiles(directory="../web-app/assets"), name="assets")
 
-# Global Tello object
-tello = Tello()
+# Tello object
+tello_system = TelloManager() # This will manage our drone connection and modules
 
 # --- VALIDATION ERROR HANDLER ---
 @app.exception_handler(RequestValidationError)
@@ -53,6 +58,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- DATA MODELS ---
+# --- Data Model for Incoming Command Array ---
+class CommandSequence(BaseModel):
+    commands: List[str]
+
 # --- Data Model for MOBILE APP: Joystick Command ---
 class RCCommand(BaseModel):
     left_right: int  # -100 to 100
@@ -60,7 +70,7 @@ class RCCommand(BaseModel):
     up_down: int     # -100 to 100
     yaw: int         # -100 to 100
 
-# --- DEPENDENCY: VERIFY TOKEN (NEW) ---
+# --- DEPENDENCY: VERIFY TOKEN ---
 # This helper function protects routes for Mobile App usage
 async def get_current_user_id(authorization: str = Header(None)):
     if not authorization:
@@ -151,7 +161,7 @@ async def startup_event():
     
     # Connect Tello Drone
     try:
-        tello.connect()
+        tello_system.connect()
         logger.info("✅ [DRONE] Tello drone connected successfully.")
     except Exception as e:
         logger.warning(f"⚠️ [DRONE] Failed to connect to Tello drone: {e}")
@@ -379,15 +389,14 @@ def get_all_modules():
 def get_status():
     try:
         return {
-            "battery": tello.get_battery(),
-            "temp": tello.get_temperature(),
-            "flying": tello.is_flying
+            "battery": tello_system.drone.get_battery(),
+            "temp": tello_system.drone.get_temperature(),
+            "flying": tello_system.drone.is_flying
         }
     except:
         return {"error": "Drone disconnected"}
     
 # --- ADMIN ENDPOINTS ---
-
 # Read all users (for Admin Dashboard)
 @app.get("/api/admin/users")
 async def get_all_users():
@@ -631,12 +640,56 @@ async def update_user_profile(user_id: str, update_data: UserUpdate):
         logger.error(f"Profile update error: {e}")
         raise HTTPException(status_code=500, detail="Database error updating profile.")
     
-# --- MOBILE APP: JOYSTICK CONTROL ENDPOINT ---
-@app.post("/api/execute/rc")
+# --- MOBILE APP ENDPOINTS ---
+# --- MODULE 1: BASIC FLIGHT CONTROL ---
+# --- COMMAND SEQUENCE ENDPOINT ---
+@app.post("/api/module1/sequence")
+def run_flight_sequence(seq: CommandSequence):
+    print(f"Received sequence: {seq.commands}")
+    
+    results = []
+    for cmd in seq.commands:
+        # Feed each command to the manager
+        response = tello_system.execute_command(cmd)
+        results.append(response)
+        
+        # Add a delay so the physical drone has time to finish moving 
+        # before the next command fires!
+        time.sleep(2.5) 
+        
+    return {"message": "Sequence complete", "logs": results}
+
+# --- SINGLE COMMAND ENDPOINT ---
+@app.post("/api/module1/{command}")
+def run_single_command(command: str):
+    print(f"[API] Received single command: {command}")
+    return tello_system.execute_command(command)
+
+# --- JOYSTICK CONTROL ENDPOINT ---
+@app.post("/api/module1/rc")
 async def execute_rc(cmd: RCCommand):
-    print(f"RC Received -> L/R: {cmd.left_right}, F/B: {cmd.forward_backward}, U/D: {cmd.up_down}, YAW: {cmd.yaw}")
-    
-    # Send directly to the drone via SDK!
-    # tello.send_rc_control(cmd.left_right, cmd.forward_backward, cmd.up_down, cmd.yaw)
-    
-    return {"status": "ok"}
+    # Pass the data straight to the manager!
+    return tello_system.send_rc_control(
+        cmd.left_right, 
+        cmd.forward_backward, 
+        cmd.up_down, 
+        cmd.yaw
+    )
+
+# ---MODULE 2: LANDING PAD ACCURACY ---
+# --- START MODULE NEDPOINT ---
+@app.post("/api/module2/start")
+def start_autonomous_landing():
+    print("[API] Triggering Module 2 Background FSM...")
+    return tello_system.start_module_2()
+
+# --- Video Feed Endpoint ---
+@app.get("/video_feed")
+def video_feed():
+    return StreamingResponse(tello_system.get_video_stream(), 
+                             media_type="multipart/x-mixed-replace; boundary=frame")
+
+# --- Live Telemetry Stream Endpoint ---
+@app.get("/api/module2/telemetry")
+def get_telemetry():
+    return tello_system.get_module_2_telemetry()

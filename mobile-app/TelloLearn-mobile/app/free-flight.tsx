@@ -24,7 +24,7 @@ export default function FreeFlightScreen() {
       // Only send if joysticks are actively being moved (saves battery and network)
       if (leftJoy.current.x !== 0 || leftJoy.current.y !== 0 || rightJoy.current.x !== 0 || rightJoy.current.y !== 0) {
         try {
-          await axios.post(`${serverIp}/api/execute/rc`, {
+          await axios.post(`${serverIp}/api/module1/rc`, {
             left_right: rightJoy.current.x,    // Roll
             forward_backward: rightJoy.current.y, // Pitch
             up_down: leftJoy.current.y,        // Altitude

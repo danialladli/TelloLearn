@@ -55,7 +55,7 @@ export default function Module1UI ({ moduleData }: { moduleData: any }) {
         
         console.log("Sending commands:", commandsToSend);
 
-        await axios.post(`${serverIp}/api/execute/sequence`, {
+        await axios.post(`${serverIp}/api/module1/sequence`, {
             commands: commandsToSend
         });
         
