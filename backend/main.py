@@ -707,3 +707,13 @@ def start_alphabet_hovering(payload: WordPayload):
 @app.get("/api/module3/telemetry")
 def get_module3_telemetry():
     return tello_system.get_module_3_telemetry()
+
+# --- MODULE 4 ENDPOINTS ---
+@app.post("/api/module4/start")
+def start_shortest_path(payload: WordPayload):
+    print(f"[API] Triggering Module 4 Speech/Pathfinding for word: {payload.word}")
+    return tello_system.start_module_4(payload.word)
+
+@app.get("/api/module4/telemetry")
+def get_module4_telemetry():
+    return tello_system.get_module_4_telemetry()

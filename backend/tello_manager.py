@@ -7,6 +7,7 @@ from djitellopy import tello
 from drone_logic.module1_logic import BasicFlightController
 from drone_logic.module2_logic import AutonomousLanding
 from drone_logic.module3_logic import AlphabetHovering
+from drone_logic.module4_logic import ShortestPathSpeller
 
 class TelloManager:
     def __init__(self):
@@ -107,4 +108,34 @@ class TelloManager:
             "current_target": "", 
             "spelled_so_far": "",
             "full_word": ""
+        }
+
+    # --- MODULE 4: SPEECH TO SHORTEST PATH ---
+    def start_module_4(self, target_word: str):
+        if self.active_module and self.active_module.is_active:
+            self.active_module.stop()
+
+        self.active_module = ShortestPathSpeller(self.drone, self.is_connected, target_word)
+        import threading
+        threading.Thread(target=self.active_module.start, daemon=True).start()
+        return {"message": f"Module 4 Pathfinding Initiated for word: {target_word}"}
+
+    def get_module_4_telemetry(self):
+        """Returns the spatial navigation progress."""
+        if self.active_module and isinstance(self.active_module, ShortestPathSpeller):
+            return {
+                "status": "active" if self.active_module.is_active else "inactive",
+                "state": self.active_module.flight_state,
+                "current_target": self.active_module.current_target,
+                "spelled_so_far": "".join(self.active_module.spelled_letters),
+                "total_distance": round(self.active_module.total_distance_traveled, 1),
+                "next_vector": self.active_module.next_move_vector
+            }
+        return {
+            "status": "inactive", 
+            "state": "OFFLINE", 
+            "current_target": "", 
+            "spelled_so_far": "",
+            "total_distance": 0.0,
+            "next_vector": [0, 0]
         }    
