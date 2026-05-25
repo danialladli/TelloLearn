@@ -70,6 +70,10 @@ class RCCommand(BaseModel):
     up_down: int     # -100 to 100
     yaw: int         # -100 to 100
 
+# --- Data Model for MOBILE APP: MODULE 3 Word Payload ---
+class WordPayload(BaseModel):
+    word: str    
+
 # --- DEPENDENCY: VERIFY TOKEN ---
 # This helper function protects routes for Mobile App usage
 async def get_current_user_id(authorization: str = Header(None)):
@@ -693,3 +697,13 @@ def video_feed():
 @app.get("/api/module2/telemetry")
 def get_telemetry():
     return tello_system.get_module_2_telemetry()
+
+# --- MODULE 3: ALPHABET HOVERING ---
+@app.post("/api/module3/start")
+def start_alphabet_hovering(payload: WordPayload):
+    print(f"[API] Triggering Module 3 for word: {payload.word}")
+    return tello_system.start_module_3(payload.word)
+
+@app.get("/api/module3/telemetry")
+def get_module3_telemetry():
+    return tello_system.get_module_3_telemetry()

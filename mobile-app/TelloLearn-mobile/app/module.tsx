@@ -5,7 +5,7 @@ import { useLocalSearchParams } from 'expo-router';
 // Import our new separated component!
 import Module1UI from '@/components/modules/Module1UI';
 import Module2UI from '@/components/modules/Module2UI';
-//import Module3UI from '@/components/modules/Module3UI';
+import Module3UI from '../components/modules/Module3UI';
 //import Module4UI from '@/components/modules/Module4UI';
 //import Module5UI from '@/components/modules/Module5UI';
 
@@ -61,6 +61,9 @@ export default function ModuleScreen() {
       
     case 'live_video':
       return <Module2UI moduleData={moduleData} />;
+
+    case 'alphabet_recognition': 
+      return <Module3UI moduleData={moduleData} />;   
       
     default:
       return (
