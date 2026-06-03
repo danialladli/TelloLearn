@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronRight, ChevronLeft, Play, FileText, Code, Home, AlertCircle, CheckCircle } from 'lucide-react';
+import axios from 'axios';
+import { MODULE_CONTENT } from '../../assets/strings/moduleStrings';
 
 export default function Module() {
   const { moduleId } = useParams();
@@ -27,10 +29,16 @@ export default function Module() {
             const res = await fetch('http://127.0.0.1:8000/api/modules');
             const allModules = await res.json();
             
-            // Fix: Compare as strings to ensure match
+            // Find the current module from the database
             const currentMod = allModules.find(m => String(m.id) === String(safeId));
 
             if (currentMod) {
+                // HYBRID FIX: Inject the formatted docs from our local strings file!
+                const localContent = MODULE_CONTENT.find(m => String(m.id) === String(safeId));
+                if (localContent) {
+                    currentMod.docs = localContent.docs;
+                }
+
                 console.log('[MODULE] Loaded data for:', currentMod.title);
                 setModuleData(currentMod);
                 setCode(currentMod.default_code || "");
@@ -90,43 +98,65 @@ export default function Module() {
     setValidation(checkCode());
   }, [code]);
 
-  // --- 5. EXECUTE MISSION ---
+  // --- 5. EXECUTE MISSION (AI VALIDATION) ---
   const handleExecute = async () => {
     if (!moduleData) return;
     setLoading(true);
     
-    // Normalize strings
-    const userSubmission = code.trim().replace(/\r\n/g, "\n");
-    const solution = (moduleData.default_code || "").trim().replace(/\r\n/g, "\n");
+    try {
+      // 1. Send the code to the Gemini AI Backend for validation
+      console.log(`[SYSTEM] Sending code to AI Tutor for Module ${safeId}...`);
+      const validateResponse = await fetch('http://127.0.0.1:8000/api/validate_code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          user_id: String(userId), 
+          module_id: `module${safeId}`, 
+          code: code 
+        })
+      });
+      
+      const validationResult = await validateResponse.json();
 
-    const isCorrect = userSubmission === solution;
+      // 2. Evaluate the AI's Decision
+      if (validationResult.is_correct) {
+        
+        // 3. Silently update the database progress first
+        try {
+            const progressResponse = await fetch('http://127.0.0.1:8000/api/update-progress', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ user_id: userId, module_id: parseInt(safeId) })
+            });
+            const progressResult = await progressResponse.json();
 
-    if (isCorrect) {
-      try {
-        const response = await fetch('http://127.0.0.1:8000/api/update-progress', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: userId, module_id: parseInt(safeId) })
-        });
-        const result = await response.json();
+            // 4. Combine EVERYTHING into ONE single alert popup to prevent browser blocking
+            let combinedMessage = `🎉 AI TUTOR APPROVED!\n\n${validationResult.feedback}\n\n✅ Mission ${safeId} Complete!`;
+            
+            // Check if the next module was returned safely
+            if (progressResult.next_module_unlocked && parseInt(progressResult.next_module_unlocked) <= 5) {
+                combinedMessage += `\n🔓 Module ${progressResult.next_module_unlocked} UNLOCKED!`;
+            }
 
-        setTimeout(() => {
-            let msg = `🎉 Mission Passed!\n\nModule ${safeId} Complete!`;
-            if (parseInt(result.next_module_unlocked) <= 5) msg += `\n\n🔓 Module ${result.next_module_unlocked} UNLOCKED!`;
-            alert(msg);
+            alert(combinedMessage);
+            navigate('/dashboard'); // Navigate instantly after they click OK!
+
+        } catch (dbError) {
+            console.error("Database Sync Error:", dbError);
+            alert(`🎉 AI TUTOR APPROVED!\n\n${validationResult.feedback}\n\n(Warning: Failed to sync progress to dashboard)`);
             navigate('/dashboard'); 
-        }, 100);
+        }
 
-      } catch (error) {
-        console.error("Error saving progress:", error);
-        alert("Mission Passed, but network error occurred saving progress.");
-        navigate('/dashboard');
+      } else {
+        // AI found a logic error! Show the hint.
+        alert(`💡 AI TUTOR HINT:\n\n${validationResult.feedback}`);
+        setLoading(false); // Turn off the spinner so they can edit their code
       }
-    } else {
-      setTimeout(() => {
-          alert("❌ Mission Failed: Code does not match mission parameters.");
-          setLoading(false);
-      }, 100);
+
+    } catch (error) {
+      console.error("Error communicating with AI Tutor:", error);
+      alert("Network error: Could not reach the AI validation server.");
+      setLoading(false);
     }
   };
 

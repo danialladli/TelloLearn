@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
 from bson.objectid import ObjectId
 from typing import List
+from gemini_service import analyze_student_code
 
 # Import security functions
 from security import hash_password, verify_password, create_access_token, decode_access_token
@@ -72,7 +73,13 @@ class RCCommand(BaseModel):
 
 # --- Data Model for MOBILE APP: MODULE 3 Word Payload ---
 class WordPayload(BaseModel):
-    word: str    
+    word: str
+
+# --- Data model for the incoming request from the Web App (Step 3 Code Submission) ---
+class CodeSubmission(BaseModel):
+    user_id: str
+    module_id: str
+    code: str
 
 # --- DEPENDENCY: VERIFY TOKEN ---
 # This helper function protects routes for Mobile App usage
@@ -717,3 +724,39 @@ def start_shortest_path(payload: WordPayload):
 @app.get("/api/module4/telemetry")
 def get_module4_telemetry():
     return tello_system.get_module_4_telemetry()
+
+# --- Step 3: Validate Student using Gemini AI API ---
+@app.post("/api/validate_code")
+def validate_code(submission: CodeSubmission):
+    print(f"[SYSTEM] Sending {submission.module_id} code to Gemini for analysis...")
+    
+    # UML Step: "Call Gemini GenAI API" -> "Analyze Syntax & Logic"
+    validation_result = analyze_student_code(submission.module_id, submission.code)
+    
+    # UML Step: "Is Code Correct?"
+    if validation_result["is_correct"]:
+        # --- SUCCESS FLOW ---
+        print(f"[SYSTEM] Code correct! Unlocking flight for user {submission.user_id}")
+        
+        # TODO: Database Update
+        # UML Step: "Mark Module as 'Completed'"
+        # db.update_user_progress(submission.user_id, submission.module_id, status="completed")
+        
+        # UML Step: "Unlock Flight on Mobile App"
+        # db.unlock_mobile_flight(submission.user_id, submission.module_id)
+        
+        return {
+            "status": "success",
+            "is_correct": True,
+            "feedback": validation_result["feedback"] # UML Step: "Show Success Message"
+        }
+        
+    else:
+        # --- ERROR FLOW ---
+        print("[SYSTEM] Code incorrect. Generating hints...")
+        
+        return {
+            "status": "failed",
+            "is_correct": False,
+            "feedback": validation_result["feedback"] # UML Step: "Display Error Feedback"
+        }

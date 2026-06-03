@@ -8,13 +8,17 @@ from drone_logic.module1_logic import BasicFlightController
 from drone_logic.module2_logic import AutonomousLanding
 from drone_logic.module3_logic import AlphabetHovering
 from drone_logic.module4_logic import ShortestPathSpeller
+from drone_logic.module5_logic import SwarmLeaderFollower
 
 class TelloManager:
     def __init__(self):
         self.drone = tello.Tello()
+        self.drone_follower = tello.Tello()
         self.is_connected = False
         self.flight_controller = BasicFlightController(self.drone)
         self.active_module = None # Hold our active module threads
+        self.swarm_connected = False
+        self.swarm_controller = SwarmLeaderFollower([self.drone, self.drone_follower], self.is_connected)
 
     def connect(self):
         if not self.is_connected:
@@ -138,4 +142,20 @@ class TelloManager:
             "spelled_so_far": "",
             "total_distance": 0.0,
             "next_vector": [0, 0]
-        }    
+        }
+    
+    # --- MODULE 5: SWARM PROGRAMMING ---
+    def execute_swarm_command(self, command: str):
+        # Update the connection status in case we are mocking
+        self.swarm_controller.is_connected = self.is_connected 
+        return self.swarm_controller.execute_swarm_command(command)
+
+    def get_swarm_telemetry(self):
+        """Returns live data for the entire formation."""
+        return {
+            "status": "active" if self.swarm_controller.is_active else "inactive",
+            "state": self.swarm_controller.swarm_state,
+            "last_command": self.swarm_controller.last_command,
+            "leader_pos": self.swarm_controller.leader_pos,
+            "follower_pos": self.swarm_controller.follower_pos
+        }
