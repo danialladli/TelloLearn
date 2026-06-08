@@ -725,6 +725,16 @@ def start_shortest_path(payload: WordPayload):
 def get_module4_telemetry():
     return tello_system.get_module_4_telemetry()
 
+# --- MODULE 5 ENDPOINTS ---
+@app.post("/api/module5/{command}")
+def run_swarm_command(command: str):
+    print(f"[API] Received Swarm Command: {command}")
+    return tello_system.execute_swarm_command(command)
+
+@app.get("/api/module5/telemetry")
+def get_swarm_telemetry():
+    return tello_system.get_swarm_telemetry()
+
 # --- Step 3: Validate Student using Gemini AI API ---
 @app.post("/api/validate_code")
 def validate_code(submission: CodeSubmission):
