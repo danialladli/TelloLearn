@@ -1,27 +1,30 @@
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { ThemeProvider, DarkTheme } from '@react-navigation/native';
+// Screens that stay in portrait — everything else locks to landscape
+const PORTRAIT_ROUTES = new Set(['/', '/index', '/login']);
 
 export default function RootLayout() {
+  const pathname = usePathname();
+
   useEffect(() => {
-    // Default to portrait for pre-login screens (index, login)
-    async function lockOrientation() {
-      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    if (PORTRAIT_ROUTES.has(pathname)) {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    } else {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     }
-    lockOrientation();
-  }, []);
+  }, [pathname]);
 
   return (
     <ThemeProvider value={DarkTheme}>
       <StatusBar hidden={true} />
-      <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
-        <Stack.Screen name="index" />       {/* 1. Landing */}
-        <Stack.Screen name="login" />       {/* 2. Login */}
-        <Stack.Screen name="connection" />  {/* 3. Connection */}
-        <Stack.Screen name="dashboard" />   {/* 4. Dashboard */}
-        <Stack.Screen name="module" />      {/* 5. Camera/Run */}
+      <Stack screenOptions={{ headerShown: false, animation: 'none' }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="login" />
+<Stack.Screen name="dashboard" />
+        <Stack.Screen name="module" />
       </Stack>
     </ThemeProvider>
   );

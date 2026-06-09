@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, ScrollView, Act
 import { useRouter } from 'expo-router';
 import { XCircle, Play, Square, AlertOctagon, Mic, Navigation, MoveUpRight, Target } from 'lucide-react-native';
 import axios from 'axios';
+import DroneStatusBadge from '@/components/DroneStatusBadge';
+import { checkDroneConnected } from '@/utils/droneCheck';
 
 export default function Module4UI({ moduleData }: { moduleData: any }) {
   const router = useRouter();
@@ -16,7 +18,6 @@ export default function Module4UI({ moduleData }: { moduleData: any }) {
   // Telemetry State (Spatial Navigation)
   const [flightState, setFlightState] = useState("OFFLINE");
   const [currentTarget, setCurrentTarget] = useState("");
-  const [spelledSoFar, setSpelledSoFar] = useState("");
   const [totalDistance, setTotalDistance] = useState(0);
   const [vector, setVector] = useState([0, 0]);
 
@@ -36,7 +37,6 @@ export default function Module4UI({ moduleData }: { moduleData: any }) {
 
           setFlightState(data.state);
           setCurrentTarget(data.current_target);
-          setSpelledSoFar(data.spelled_so_far);
           setTotalDistance(data.total_distance);
           setVector(data.next_vector);
 
@@ -67,14 +67,16 @@ export default function Module4UI({ moduleData }: { moduleData: any }) {
     }, 2000);
   };
 
-  const toggleMission = () => {
+  const toggleMission = async () => {
     if (countdown !== null) {
+      console.log('[MODULE 4] Countdown cancelled by user');
       if (timerRef.current) clearInterval(timerRef.current);
       setCountdown(null);
       return;
     }
 
     if (missionActive) {
+      console.log('[MODULE 4] Mission stopped by user');
       setMissionActive(false);
       axios.post(`${serverIp}/api/module1/land`).catch(() => {});
       return;
@@ -85,9 +87,12 @@ export default function Module4UI({ moduleData }: { moduleData: any }) {
       return;
     }
 
+    if (!await checkDroneConnected()) return;
+
+    console.log(`[MODULE 4] Drone check passed — starting countdown for word: "${transcribedText}"`);
     let count = 3;
     setCountdown(count);
-    
+
     timerRef.current = setInterval(async () => {
       count -= 1;
       if (count > 0) {
@@ -98,9 +103,12 @@ export default function Module4UI({ moduleData }: { moduleData: any }) {
         setMissionActive(true);
 
         try {
+          console.log(`[MODULE 4] Sending takeoff + start navigation for word: "${transcribedText}"`);
           await axios.post(`${serverIp}/api/module1/takeoff`);
           await axios.post(`${serverIp}/api/module4/start`, { word: transcribedText });
+          console.log('[MODULE 4] Mission commands sent successfully');
         } catch (e) {
+          console.error('[MODULE 4] Failed to start mission:', e);
           Alert.alert("Error", "Could not reach backend.");
           setMissionActive(false);
         }
@@ -122,7 +130,8 @@ export default function Module4UI({ moduleData }: { moduleData: any }) {
         <ScrollView contentContainerStyle={{ padding: 25 }}>
           <View style={styles.header}>
             <TouchableOpacity onPress={() => router.back()}><XCircle color="#ef4444" size={32} /></TouchableOpacity>
-            <Text style={styles.title}>Shortest Path Navigation</Text>
+            <Text style={[styles.title, { flex: 1 }]}>{moduleData?.title || "Shortest Path Navigation"}</Text>
+            <DroneStatusBadge />
           </View>
 
           {/* Speech Section */}

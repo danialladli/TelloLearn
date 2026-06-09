@@ -28,7 +28,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: {
-    fontSize: 64,
+    fontSize: 54,
     fontWeight: 'bold',
     color: Colors.dark.tint,
     letterSpacing: 4,

@@ -7,7 +7,7 @@ type JoystickProps = {
 
 export default function Joystick({ onValueChange }: JoystickProps) {
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
-  
+
   const containerRadius = 70;
   const maxDistance = 60;
 
@@ -28,7 +28,7 @@ export default function Joystick({ onValueChange }: JoystickProps) {
     pan.setValue({ x: dx, y: dy });
 
     const mappedX = Math.round((dx / maxDistance) * 100);
-    const mappedY = Math.round((-dy / maxDistance) * 100); 
+    const mappedY = Math.round((-dy / maxDistance) * 100);
 
     onValueChange({ x: mappedX, y: mappedY });
   };
@@ -46,13 +46,13 @@ export default function Joystick({ onValueChange }: JoystickProps) {
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
-      
+
       // 1. Refuse to let other elements cancel this joystick's gesture
-      onPanResponderTerminationRequest: () => false, 
-      
+      onPanResponderTerminationRequest: () => false,
+
       // 2. THE MULTI-TOUCH UNLOCK (Crucial for Android)
       // This tells the OS to allow other PanResponders to activate simultaneously!
-      onShouldBlockNativeResponder: () => false, 
+      onShouldBlockNativeResponder: () => false,
 
       onPanResponderGrant: (e) => updatePosition(e),
       onPanResponderMove: (e) => updatePosition(e),
@@ -69,7 +69,7 @@ export default function Joystick({ onValueChange }: JoystickProps) {
           { transform: pan.getTranslateTransform() }
         ]}
         // Crucial: Forces all touches to hit the 'base' view, keeping math stable
-        pointerEvents="none" 
+        pointerEvents="none"
       />
     </View>
   );
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   stick: {
-    position: 'absolute', 
+    position: 'absolute',
     width: 60,
     height: 60,
     borderRadius: 30,

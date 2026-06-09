@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, ScrollView } fr
 import { useRouter } from 'expo-router';
 import { XCircle, Play, Square, AlertOctagon, Target } from 'lucide-react-native';
 import axios from 'axios';
+import DroneStatusBadge from '@/components/DroneStatusBadge';
+import { checkDroneConnected } from '@/utils/droneCheck';
 
 export default function Module2({ moduleData }: { moduleData: any }) {
   const router = useRouter();
@@ -53,9 +55,10 @@ export default function Module2({ moduleData }: { moduleData: any }) {
     return () => clearInterval(intervalId);
   }, [missionActive, serverIp]);
 
-  const toggleMission = () => {
+  const toggleMission = async () => {
     // 1. If currently counting down, CANCEL IT
     if (countdown !== null) {
+      console.log('[MODULE 2] Countdown cancelled by user');
       if (timerRef.current) clearInterval(timerRef.current);
       setCountdown(null);
       return;
@@ -63,32 +66,37 @@ export default function Module2({ moduleData }: { moduleData: any }) {
 
     // 2. If mission is active, STOP IT
     if (missionActive) {
+      console.log('[MODULE 2] Mission stopped by user');
       setMissionActive(false);
       axios.post(`${serverIp}/api/module1/sequence`, { commands: ['stop'] }).catch(() => {});
       return;
     }
 
+    if (!await checkDroneConnected()) return;
+
     // 3. Start the 3-second Countdown!
+    console.log('[MODULE 2] Drone check passed — starting countdown');
     let count = 3;
     setCountdown(count);
-    
+
     timerRef.current = setInterval(async () => {
       count -= 1;
-      
+
       if (count > 0) {
         setCountdown(count);
       } else {
-        // Countdown finished! 
         if (timerRef.current) clearInterval(timerRef.current);
         setCountdown(null);
         setMissionActive(true);
-        setPadDetected(false); // Reset telemetry
+        setPadDetected(false);
 
         try {
-          // Tell Python to takeoff, then immediately trigger the CV landing loop
+          console.log('[MODULE 2] Sending takeoff + start landing-pad mission');
           await axios.post(`${serverIp}/api/module1/takeoff`);
           await axios.post(`${serverIp}/api/module2/start`);
+          console.log('[MODULE 2] Mission commands sent successfully');
         } catch (e) {
+          console.error('[MODULE 2] Failed to start mission:', e);
           Alert.alert("Error", "Could not reach drone.");
           setMissionActive(false);
         }
@@ -142,7 +150,8 @@ export default function Module2({ moduleData }: { moduleData: any }) {
             }}>
               <XCircle color="#ef4444" size={32} />
             </TouchableOpacity>
-            <Text style={styles.title}>{moduleData.title}</Text>
+            <Text style={[styles.title, { flex: 1 }]}>{moduleData.title}</Text>
+            <DroneStatusBadge />
           </View>
 
           <Text style={styles.description}>

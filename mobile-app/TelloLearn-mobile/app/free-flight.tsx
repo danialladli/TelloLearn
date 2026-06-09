@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/theme';
 import { XCircle, ArrowUpCircle, ArrowDownCircle } from 'lucide-react-native';
 import Joystick from '@/components/modules/Joystick';
 import axios from 'axios';
+import DroneStatusBadge from '@/components/DroneStatusBadge';
+import { checkDroneConnected } from '@/utils/droneCheck';
 
 export default function FreeFlightScreen() {
   const router = useRouter();
@@ -14,7 +16,6 @@ export default function FreeFlightScreen() {
   const leftJoy = useRef({ x: 0, y: 0 });  // Yaw, Altitude
   const rightJoy = useRef({ x: 0, y: 0 }); // Roll, Pitch
 
-  const [isConnected, setIsConnected] = useState(true);
 
   // THE RC LOOP: Sends commands to the server 10 times a second
   useEffect(() => {
@@ -40,10 +41,14 @@ export default function FreeFlightScreen() {
   }, []);
 
   const sendSingleCommand = async (command: string) => {
+    if (!await checkDroneConnected()) return;
     try {
       const serverIp = process.env.EXPO_PUBLIC_API_URL;
+      console.log(`[FREE FLIGHT] Sending command: ${command}`);
       await axios.post(`${serverIp}/api/execute/sequence`, { commands: [command] });
+      console.log(`[FREE FLIGHT] Command '${command}' sent successfully`);
     } catch (e) {
+      console.error(`[FREE FLIGHT] Command '${command}' failed:`, e);
       Alert.alert("Error", "Command failed to send.");
     }
   };
@@ -56,7 +61,7 @@ export default function FreeFlightScreen() {
           <XCircle color="white" size={32} />
         </TouchableOpacity>
         <Text style={styles.title}>FREE FLIGHT DECK</Text>
-        <View style={[styles.statusDot, { backgroundColor: isConnected ? '#10b981' : '#ef4444' }]} />
+        <DroneStatusBadge />
       </View>
 
       {/* FLIGHT CONTROLS */}
@@ -96,7 +101,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0f172a' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 40, backgroundColor: 'rgba(0,0,0,0.5)' },
   title: { color: 'white', fontSize: 20, fontWeight: 'bold', letterSpacing: 2 },
-  statusDot: { width: 12, height: 12, borderRadius: 6 },
   flightArea: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 40 },
   joyWrapper: { alignItems: 'center', gap: 20 },
   joyLabel: { color: 'rgba(255,255,255,0.5)', fontWeight: 'bold', letterSpacing: 1 },

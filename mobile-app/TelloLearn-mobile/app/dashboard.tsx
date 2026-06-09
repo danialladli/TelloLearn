@@ -1,11 +1,12 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Image, Alert } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Colors } from '@/constants/theme';
 import { Lock, Play, Gamepad2, CheckCircle, User } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import DroneStatusBadge from '@/components/DroneStatusBadge';
 
 // Static module definitions (The descriptions/titles)
 const MODULE_DEFS = [
@@ -56,15 +57,10 @@ export default function Dashboard() {
     }
   };
 
-  // 1. AUTO-SYNC + orientation lock: Runs every time the user looks at this screen
+  // 1. AUTO-SYNC: Runs every time the user returns to this screen
   useFocusEffect(
     useCallback(() => {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
       fetchProgress();
-
-      return () => {
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-      };
     }, [])
   );
 
@@ -74,6 +70,29 @@ export default function Dashboard() {
     await fetchProgress();
     setRefreshing(false);
   }, []);
+
+  // 3. LOGOUT: Clear credentials and return to login
+  const handleLogout = () => {
+    console.log('[LOGOUT] User initiated logout');
+    Alert.alert(
+      "Log Out",
+      "Are you sure you want to log out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Log Out",
+          style: "destructive",
+          onPress: async () => {
+            console.log('[LOGOUT] Confirmed — clearing session and navigating to login');
+            await AsyncStorage.multiRemove(['user_token', 'user_username']);
+            // Lock to portrait BEFORE navigating so login never paints in landscape
+            await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+            router.replace('./login');
+          },
+        },
+      ]
+    );
+  };
 
   const handleModulePress = (modId: number, isLocked: boolean): void => {
     if (!isLocked) {
@@ -112,21 +131,23 @@ export default function Dashboard() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.headerContainer}>
         <Text style={[styles.header, { color: theme.text }]}>Mission Select</Text>
-        
-        <View style={styles.profileContainer}>
+
+        <DroneStatusBadge />
+
+        <TouchableOpacity style={styles.profileContainer} onPress={handleLogout} activeOpacity={0.7}>
           <Text style={[styles.pilotName, { color: theme.textSecondary }]}>Pilot {username}</Text>
           {avatarSource ? (
-            <Image 
-              source={avatarSource} 
-              style={styles.avatarImage} 
-              key={avatarSource.uri} // Forces image to refresh if URL changes
+            <Image
+              source={avatarSource}
+              style={styles.avatarImage}
+              key={avatarSource.uri}
             />
           ) : (
             <View style={[styles.avatarImage, { backgroundColor: theme.tint, justifyContent: 'center', alignItems: 'center' }]}>
               <User color="white" size={20} />
             </View>
           )}
-        </View>
+        </TouchableOpacity>
       </View>
       
       <ScrollView 

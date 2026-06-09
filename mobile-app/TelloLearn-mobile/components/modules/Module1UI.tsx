@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Colors } from '@/constants/theme';
 import { Play, XCircle, Trash2 } from 'lucide-react-native';
 import axios from 'axios';
+import DroneStatusBadge from '@/components/DroneStatusBadge';
+import { checkDroneConnected } from '@/utils/droneCheck';
 
 // 1. DEFINE OUR CODING BLOCKS
 const AVAILABLE_BLOCKS = [
@@ -48,19 +49,23 @@ export default function Module1UI ({ moduleData }: { moduleData: any }) {
       return;
     }
 
+    if (!await checkDroneConnected()) return;
+
     setIsRunning(true);
     try {
         const commandsToSend = sequence.map(b => b.command);
         const serverIp = process.env.EXPO_PUBLIC_API_URL;
-        
-        console.log("Sending commands:", commandsToSend);
+
+        console.log('[MODULE 1] Executing sequence:', commandsToSend);
 
         await axios.post(`${serverIp}/api/module1/sequence`, {
             commands: commandsToSend
         });
-        
+
+        console.log('[MODULE 1] Sequence complete');
         Alert.alert("Mission Complete", "The drone has finished the sequence.");
     } catch (e) {
+        console.error('[MODULE 1] Sequence failed:', e);
         Alert.alert("Mission Failed", "Could not reach the drone.");
     } finally {
         setIsRunning(false);
@@ -77,9 +82,12 @@ export default function Module1UI ({ moduleData }: { moduleData: any }) {
             <XCircle color="black" size={30} />
           </TouchableOpacity>
           <Text style={styles.canvasTitle}>{moduleData.title || "Flight Sequence"}</Text>
-          <TouchableOpacity onPress={clearSequence}>
-            <Trash2 color="#ef4444" size={24} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <DroneStatusBadge />
+            <TouchableOpacity onPress={clearSequence}>
+              <Trash2 color="#ef4444" size={24} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView contentContainerStyle={styles.sequenceList}>

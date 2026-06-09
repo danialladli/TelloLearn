@@ -13,8 +13,9 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { useRouter } from 'expo-router'; 
+import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as ScreenOrientation from 'expo-screen-orientation';
 
 // THEME COLORS
 const COLORS = {
@@ -44,8 +45,7 @@ export default function LoginScreen() {
     try {
       const serverIp = process.env.EXPO_PUBLIC_API_URL;
       if (!serverIp) {
-         Alert.alert("Error", "No server IP found. Please reconnect.");
-         router.replace('./connection');
+         Alert.alert("Configuration Error", "Server URL not configured. Set EXPO_PUBLIC_API_URL in your .env file.");
          return;
       }
 
@@ -63,10 +63,11 @@ export default function LoginScreen() {
         await AsyncStorage.setItem('user_token', token);
         await AsyncStorage.setItem('user_id', id);
         await AsyncStorage.setItem('user_username', username);
-        // Save avatar if your backend sends it during login too!
-        if (avatar) await AsyncStorage.setItem('user_avatar', avatar); 
+        if (avatar) await AsyncStorage.setItem('user_avatar', avatar);
 
-        router.replace('/dashboard'); 
+        // Lock to landscape BEFORE navigating so the new screen never paints in portrait
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+        router.replace('/dashboard');
       } else {
         Alert.alert('Login Failed', 'Server returned an error.');
       }

@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, ScrollView, Tex
 import { useRouter } from 'expo-router';
 import { XCircle, Play, Square, AlertOctagon, Target, Type } from 'lucide-react-native';
 import axios from 'axios';
+import DroneStatusBadge from '@/components/DroneStatusBadge';
+import { checkDroneConnected } from '@/utils/droneCheck';
 
 export default function Module3UI({ moduleData }: { moduleData: any }) {
   const router = useRouter();
@@ -57,14 +59,16 @@ export default function Module3UI({ moduleData }: { moduleData: any }) {
     return () => clearInterval(intervalId);
   }, [missionActive, serverIp, flightState]);
 
-  const toggleMission = () => {
+  const toggleMission = async () => {
     if (countdown !== null) {
+      console.log('[MODULE 3] Countdown cancelled by user');
       if (timerRef.current) clearInterval(timerRef.current);
       setCountdown(null);
       return;
     }
 
     if (missionActive) {
+      console.log('[MODULE 3] Mission stopped by user');
       setMissionActive(false);
       axios.post(`${serverIp}/api/module1/land`).catch(() => {});
       return;
@@ -76,13 +80,16 @@ export default function Module3UI({ moduleData }: { moduleData: any }) {
       return;
     }
 
+    if (!await checkDroneConnected()) return;
+
+    console.log(`[MODULE 3] Drone check passed — starting countdown for word: "${targetWord.toUpperCase()}"`);
     let count = 3;
     setCountdown(count);
-    setSpelledSoFar(""); // Reset spelling
-    
+    setSpelledSoFar("");
+
     timerRef.current = setInterval(async () => {
       count -= 1;
-      
+
       if (count > 0) {
         setCountdown(count);
       } else {
@@ -91,14 +98,12 @@ export default function Module3UI({ moduleData }: { moduleData: any }) {
         setMissionActive(true);
 
         try {
-          // 1. Takeoff using Module 1
+          console.log(`[MODULE 3] Sending takeoff + start alphabet mission for: "${targetWord.toUpperCase()}"`);
           await axios.post(`${serverIp}/api/module1/takeoff`);
-          
-          // 2. Start the Alphabet FSM with the user's word!
-          await axios.post(`${serverIp}/api/module3/start`, {
-            word: targetWord.toUpperCase()
-          });
+          await axios.post(`${serverIp}/api/module3/start`, { word: targetWord.toUpperCase() });
+          console.log('[MODULE 3] Mission commands sent successfully');
         } catch (e) {
+          console.error('[MODULE 3] Failed to start mission:', e);
           Alert.alert("Error", "Could not reach backend to start Module 3.");
           setMissionActive(false);
         }
@@ -145,7 +150,8 @@ export default function Module3UI({ moduleData }: { moduleData: any }) {
             }}>
               <XCircle color="#ef4444" size={32} />
             </TouchableOpacity>
-            <Text style={styles.title}>{moduleData?.title || "Alphabet Recognition"}</Text>
+            <Text style={[styles.title, { flex: 1 }]}>{moduleData?.title || "Alphabet Recognition"}</Text>
+            <DroneStatusBadge />
           </View>
 
           <Text style={styles.description}>
