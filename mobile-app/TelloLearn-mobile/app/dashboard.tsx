@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Image } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { Colors } from '@/constants/theme';
 import { Lock, Play, Gamepad2, CheckCircle, User } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -55,10 +56,15 @@ export default function Dashboard() {
     }
   };
 
-  // 1. AUTO-SYNC: Runs every time the user looks at this screen
+  // 1. AUTO-SYNC + orientation lock: Runs every time the user looks at this screen
   useFocusEffect(
     useCallback(() => {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
       fetchProgress();
+
+      return () => {
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+      };
     }, [])
   );
 

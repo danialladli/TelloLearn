@@ -3,12 +3,12 @@ import threading
 import time
 from djitellopy import tello
 
-# Import your new OOP module!
 from drone_logic.module1_logic import BasicFlightController
 from drone_logic.module2_logic import AutonomousLanding
 from drone_logic.module3_logic import AlphabetHovering
 from drone_logic.module4_logic import ShortestPathSpeller
 from drone_logic.module5_logic import SwarmLeaderFollower
+
 
 class TelloManager:
     def __init__(self):
@@ -16,9 +16,8 @@ class TelloManager:
         self.drone_follower = tello.Tello()
         self.is_connected = False
         self.flight_controller = BasicFlightController(self.drone)
-        self.active_module = None # Hold our active module threads
-        self.swarm_connected = False
-        self.swarm_controller = SwarmLeaderFollower([self.drone, self.drone_follower], self.is_connected)
+        self.active_module = None
+        self.swarm_controller = SwarmLeaderFollower([self.drone, self.drone_follower])
 
     def connect(self):
         if not self.is_connected:
@@ -52,52 +51,45 @@ class TelloManager:
             if self.active_module and self.active_module.is_active:
                 print("[MANAGER] Emergency override! Killing active module thread...")
                 self.active_module.stop()
-        
-        # Delegate the task to the dedicated class!
-        return self.flight_controller.execute(command, self.is_connected)
-    
-    def send_rc_control(self, lr: int, fb: int, ud: int, yaw: int):
-        # Delegate the continuous joystick stream to the Module 1 Controller
-        return self.flight_controller.send_rc(lr, fb, ud, yaw, self.is_connected)
 
-    # --- MODULE 2: AUTONOMOUS FSM ---
+        return self.flight_controller.execute(command)
+
+    def send_rc_control(self, lr: int, fb: int, ud: int, yaw: int):
+        return self.flight_controller.send_rc(lr, fb, ud, yaw)
+
+    # --- MODULE 2: AUTONOMOUS LANDING ---
     def start_module_2(self):
-        # NEW: Pass self.is_connected to the class
-        self.active_module = AutonomousLanding(self.drone, self.is_connected)
+        if self.active_module and self.active_module.is_active:
+            self.active_module.stop()
+
+        self.active_module = AutonomousLanding(self.drone)
         threading.Thread(target=self.active_module.start, daemon=True).start()
         return {"message": "Module 2 FSM Initiated in Background!"}
-    
+
     def get_module_2_telemetry(self):
-        """Returns the live state of the FSM thread."""
         if self.active_module and self.active_module.is_active:
-            # If the FSM is out of the SEARCHING state, it found the pad!
             pad_found = self.active_module.flight_state != "SEARCHING"
-            
             return {
                 "status": "active",
                 "state": self.active_module.flight_state,
                 "pad_detected": pad_found
             }
-        else:
-            # If the module isn't running (or finished landing)
-            return {
-                "status": "inactive", 
-                "state": "OFFLINE", 
-                "pad_detected": False
-            }
-        
+        return {
+            "status": "inactive",
+            "state": "OFFLINE",
+            "pad_detected": False
+        }
+
     # --- MODULE 3: ALPHABET RECOGNITION ---
     def start_module_3(self, target_word: str):
-        # Kill any running modules first for safety
         if self.active_module and self.active_module.is_active:
             self.active_module.stop()
 
-        self.active_module = AlphabetHovering(self.drone, self.is_connected, target_word)
+        self.active_module = AlphabetHovering(self.drone, target_word)
         threading.Thread(target=self.active_module.start, daemon=True).start()
         return {"message": f"Module 3 FSM Initiated for word: {target_word}"}
 
     def get_module_3_telemetry(self):
-        """Returns the live spelling progress of the FSM thread."""
         if self.active_module and isinstance(self.active_module, AlphabetHovering):
             return {
                 "status": "active" if self.active_module.is_active else "inactive",
@@ -107,25 +99,23 @@ class TelloManager:
                 "full_word": self.active_module.full_word
             }
         return {
-            "status": "inactive", 
-            "state": "OFFLINE", 
-            "current_target": "", 
+            "status": "inactive",
+            "state": "OFFLINE",
+            "current_target": "",
             "spelled_so_far": "",
             "full_word": ""
         }
 
-    # --- MODULE 4: SPEECH TO SHORTEST PATH ---
+    # --- MODULE 4: SHORTEST PATH SPELLING ---
     def start_module_4(self, target_word: str):
         if self.active_module and self.active_module.is_active:
             self.active_module.stop()
 
-        self.active_module = ShortestPathSpeller(self.drone, self.is_connected, target_word)
-        import threading
+        self.active_module = ShortestPathSpeller(self.drone, target_word)
         threading.Thread(target=self.active_module.start, daemon=True).start()
         return {"message": f"Module 4 Pathfinding Initiated for word: {target_word}"}
 
     def get_module_4_telemetry(self):
-        """Returns the spatial navigation progress."""
         if self.active_module and isinstance(self.active_module, ShortestPathSpeller):
             return {
                 "status": "active" if self.active_module.is_active else "inactive",
@@ -136,22 +126,19 @@ class TelloManager:
                 "next_vector": self.active_module.next_move_vector
             }
         return {
-            "status": "inactive", 
-            "state": "OFFLINE", 
-            "current_target": "", 
+            "status": "inactive",
+            "state": "OFFLINE",
+            "current_target": "",
             "spelled_so_far": "",
             "total_distance": 0.0,
             "next_vector": [0, 0]
         }
-    
+
     # --- MODULE 5: SWARM PROGRAMMING ---
     def execute_swarm_command(self, command: str):
-        # Update the connection status in case we are mocking
-        self.swarm_controller.is_connected = self.is_connected 
         return self.swarm_controller.execute_swarm_command(command)
 
     def get_swarm_telemetry(self):
-        """Returns live data for the entire formation."""
         return {
             "status": "active" if self.swarm_controller.is_active else "inactive",
             "state": self.swarm_controller.swarm_state,

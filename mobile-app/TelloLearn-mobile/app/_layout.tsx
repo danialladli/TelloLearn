@@ -6,9 +6,9 @@ import { ThemeProvider, DarkTheme } from '@react-navigation/native';
 
 export default function RootLayout() {
   useEffect(() => {
-    // Force Landscape for the entire app
+    // Default to portrait for pre-login screens (index, login)
     async function lockOrientation() {
-      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
     }
     lockOrientation();
   }, []);
