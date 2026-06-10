@@ -66,4 +66,27 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     token: str
-    new_password: str 
+    new_password: str
+
+
+# ── Drone / module endpoint payloads ─────────────────────────────────────────
+
+class CommandSequence(BaseModel):
+    commands: List[str]
+
+
+class RCCommand(BaseModel):
+    left_right: int        # -100 to 100
+    forward_backward: int  # -100 to 100
+    up_down: int           # -100 to 100
+    yaw: int               # -100 to 100
+
+
+class WordPayload(BaseModel):
+    word: str
+
+
+class CodeSubmission(BaseModel):
+    user_id: str
+    module_id: str
+    code: str
