@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users, BookOpen, Trash2, Plus, LogOut, Save, Image as ImageIcon, Video, FileText } from 'lucide-react';
+import { API_URL } from '../config';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -26,8 +27,8 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       const [usersRes, modulesRes] = await Promise.all([
-          fetch('http://127.0.0.1:8000/api/admin/users'),
-          fetch('http://127.0.0.1:8000/api/modules')
+          fetch(`${API_URL}/api/admin/users`),
+          fetch(`${API_URL}/api/modules`)
       ]);
       
       const usersData = await usersRes.json();
@@ -75,7 +76,7 @@ export default function AdminDashboard() {
   const handleSaveModule = async (e) => {
     e.preventDefault();
     try {
-        await fetch('http://127.0.0.1:8000/api/admin/modules', {
+        await fetch(`${API_URL}/api/admin/modules`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(editingModule)
@@ -89,13 +90,13 @@ export default function AdminDashboard() {
 
   const handleDeleteModule = async (id) => {
     if(!window.confirm(`Delete Module ${id}? This cannot be undone.`)) return;
-    await fetch(`http://127.0.0.1:8000/api/admin/modules/${id}`, { method: 'DELETE' });
+    await fetch(`${API_URL}/api/admin/modules/${id}`, { method: 'DELETE' });
     fetchData();
   };
 
   const handleDeleteUser = async (id) => {
     if(!window.confirm("Delete this user?")) return;
-    await fetch(`http://127.0.0.1:8000/api/admin/users/${id}`, { method: 'DELETE' });
+    await fetch(`${API_URL}/api/admin/users/${id}`, { method: 'DELETE' });
     fetchData();
   };
 

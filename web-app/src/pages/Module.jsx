@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronRight, ChevronLeft, Play, FileText, Code, Home, AlertCircle, CheckCircle } from 'lucide-react';
 import axios from 'axios';
 import { MODULE_CONTENT } from '../../assets/strings/moduleStrings';
+import { API_URL } from '../config';
 
 export default function Module() {
   const { moduleId } = useParams();
@@ -26,7 +27,7 @@ export default function Module() {
     const fetchModuleData = async () => {
         setContentLoading(true);
         try {
-            const res = await fetch('http://127.0.0.1:8000/api/modules');
+            const res = await fetch(`${API_URL}/api/modules`);
             const allModules = await res.json();
             
             // Find the current module from the database
@@ -60,7 +61,7 @@ export default function Module() {
     const storedUsername = localStorage.getItem('username');
     if (storedUsername) {
         setUsername(storedUsername);
-        fetch(`http://127.0.0.1:8000/api/auth/me/${storedUsername}`)
+        fetch(`${API_URL}/api/auth/me/${storedUsername}`)
           .then(res => res.json())
           .then(data => setUserId(data.id))
           .catch(() => setUserId("unknown"));
@@ -106,7 +107,7 @@ export default function Module() {
     try {
       // 1. Send the code to the Gemini AI Backend for validation
       console.log(`[SYSTEM] Sending code to AI Tutor for Module ${safeId}...`);
-      const validateResponse = await fetch('http://127.0.0.1:8000/api/validate_code', {
+      const validateResponse = await fetch(`${API_URL}/api/validate_code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -123,7 +124,7 @@ export default function Module() {
         
         // 3. Silently update the database progress first
         try {
-            const progressResponse = await fetch('http://127.0.0.1:8000/api/update-progress', {
+            const progressResponse = await fetch(`${API_URL}/api/update-progress`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ user_id: userId, module_id: parseInt(safeId) })

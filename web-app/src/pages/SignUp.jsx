@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { API_URL } from '../config';
 
 // Reusing the same Layout for consistency
 const AuthLayout = ({ title, children }) => (
@@ -77,8 +78,8 @@ export default function SignUp() {
 
     try {
       // Connect to the Backend Signup Endpoint
-      console.log('[SIGNUP] Sending request to backend: http://127.0.0.1:8000/api/auth/signup');
-      const response = await fetch('http://127.0.0.1:8000/api/auth/signup', {
+      console.log('[SIGNUP] Sending request to backend:', `${API_URL}/api/auth/signup`);
+      const response = await fetch(`${API_URL}/api/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),

@@ -1,3 +1,4 @@
+import os
 import secrets
 import logging
 from datetime import datetime, timedelta
@@ -8,6 +9,7 @@ from database import get_user_collection, db
 from models import UserSignup, UserLogin, ForgotPasswordRequest, ResetPasswordRequest, UserUpdate
 from security import hash_password, verify_password, create_access_token
 from services import log_activity, sync_user_modules
+from email_service import send_reset_email
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
@@ -121,11 +123,14 @@ async def forgot_password(req: ForgotPasswordRequest):
         "expires_at": expiration
     })
 
-    reset_link = f"http://localhost:5173/reset-password?token={reset_token}"
-    print("\n" + "=" * 50)
-    print(f"📧 EMAIL MOCK TO: {req.email}")
-    print(f"🔗 Reset link: {reset_link}")
-    print("=" * 50 + "\n")
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    reset_link = f"{frontend_url}/reset-password?token={reset_token}"
+
+    try:
+        await send_reset_email(req.email, reset_link)
+    except Exception as e:
+        logger.error(f"❌ [EMAIL] Failed to send reset email to {req.email}: {e}")
+        # Token is already saved — user can retry; don't expose the error externally
 
     return {"status": "success", "message": "If that email matches an account, a reset link has been sent."}
 
