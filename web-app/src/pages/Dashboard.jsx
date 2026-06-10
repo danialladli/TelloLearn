@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, Play, CheckCircle } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
-import { API_URL } from '../config';
+import { API_URL, apiFetch } from '../config';
 
 const MODULE_IMAGES = {
   "1": "./assets/Dashboard/basic_flight_control.png",
@@ -104,8 +104,8 @@ export default function Dashboard() {
     const fetchData = async () => {
         try {
             const [userRes, modulesRes] = await Promise.all([
-                fetch(`${API_URL}/api/auth/me/${storedUsername}`),
-                fetch(`${API_URL}/api/modules`)
+                apiFetch(`${API_URL}/api/auth/me/${storedUsername}`),
+                apiFetch(`${API_URL}/api/modules`)
             ]);
 
             if (!userRes.ok || !modulesRes.ok) throw new Error("Failed to fetch data");
@@ -161,7 +161,7 @@ export default function Dashboard() {
         if (token) {
             const moduleTitle = targetModule.title || "Unknown Module";
             // Fire and forget log
-            fetch(`${API_URL}/api/activity/log`, {
+            apiFetch(`${API_URL}/api/activity/log`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',

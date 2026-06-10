@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { User, Shield } from 'lucide-react'; // Icons
-import { API_URL } from '../config';
+import { API_URL, apiFetch } from '../config';
 
 const AuthLayout = ({ title, children }) => (
   <div className="min-h-screen bg-tello-dark flex flex-col justify-center items-center">
@@ -44,7 +44,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/auth/login`, {
+      const response = await apiFetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),

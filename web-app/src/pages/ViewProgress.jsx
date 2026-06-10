@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, CheckCircle, PlayCircle, User, ArrowLeft } from 'lucide-react';
-import { API_URL } from '../config';
+import { API_URL, apiFetch } from '../config';
 
 export default function ViewProgress() {
   const navigate = useNavigate();
@@ -20,7 +20,7 @@ export default function ViewProgress() {
         // Let's assume you have a 'user_id' stored or fetch it.
         
         // Simpler approach for your current setup: Fetch /me to get ID, then fetch activity
-        const userRes = await fetch(`${API_URL}/api/auth/me/${username}`);
+        const userRes = await apiFetch(`${API_URL}/api/auth/me/${username}`);
         const userData = await userRes.json();
         
         // Use the token for the protected route (if you implemented tokens in headers)
@@ -28,7 +28,7 @@ export default function ViewProgress() {
         // Let's assume we use the Token flow properly:
         const token = localStorage.getItem('user_token'); // Make sure Login.jsx saves this!
 
-        const res = await fetch(`${API_URL}/api/activity`, {
+        const res = await apiFetch(`${API_URL}/api/activity`, {
              headers: { 'Authorization': `Bearer ${token}` }
         });
         

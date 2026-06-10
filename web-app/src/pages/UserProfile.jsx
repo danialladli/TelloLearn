@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { User, Mail, Lock, Save, ArrowLeft, Image as ImageIcon } from 'lucide-react';
-import { API_URL } from '../config';
+import { API_URL, apiFetch } from '../config';
 
 // Define your default avatars here
 const AVATAR_OPTIONS = [
@@ -39,7 +39,7 @@ export default function Profile() {
       }
 
       try {
-        const response = await fetch(`${API_URL}/api/auth/me/${storedUsername}`);
+        const response = await apiFetch(`${API_URL}/api/auth/me/${storedUsername}`);
         if (response.ok) {
           const data = await response.json();
           setUserId(data.id);
@@ -80,7 +80,7 @@ export default function Profile() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/auth/users/${userId}`, {
+      const response = await apiFetch(`${API_URL}/api/auth/users/${userId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
