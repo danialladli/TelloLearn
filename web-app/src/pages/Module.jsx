@@ -58,16 +58,12 @@ export default function Module() {
     fetchModuleData();
   }, [safeId]);
 
-  // --- 2. FETCH USER DATA ---
+  // --- 2. LOAD USER DATA FROM LOCAL STORAGE (no API call needed) ---
   useEffect(() => {
     const storedUsername = localStorage.getItem('username');
-    if (storedUsername) {
-        setUsername(storedUsername);
-        apiFetch(`${API_URL}/api/auth/me/${storedUsername}`)
-          .then(res => res.json())
-          .then(data => setUserId(data.id))
-          .catch(() => setUserId("unknown"));
-    }
+    const storedUserId   = localStorage.getItem('user_id');
+    if (storedUsername) setUsername(storedUsername);
+    if (storedUserId)   setUserId(storedUserId);
   }, []);
 
   // --- 3. LINE NUMBERS ---

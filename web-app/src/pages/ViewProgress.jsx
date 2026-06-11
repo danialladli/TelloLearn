@@ -14,24 +14,10 @@ export default function ViewProgress() {
       if (!username) return navigate('/login');
 
       try {
-        // 1. Get Token (Assuming you stored token in login, if not, we rely on username logic or re-login)
-        // For this demo, let's assume we need to fetch the ID via the /me endpoint first OR use the stored token if you implemented it.
-        // If you didn't store the token in localStorage during login, we might need to rely on the backend session or update login.
-        // Let's assume you have a 'user_id' stored or fetch it.
-        
-        // Simpler approach for your current setup: Fetch /me to get ID, then fetch activity
-        const userRes = await apiFetch(`${API_URL}/api/auth/me/${username}`);
-        const userData = await userRes.json();
-        
-        // Use the token for the protected route (if you implemented tokens in headers)
-        // Or pass User ID manually if your security is relaxed for the demo.
-        // Let's assume we use the Token flow properly:
-        const token = localStorage.getItem('user_token'); // Make sure Login.jsx saves this!
-
+        const token = localStorage.getItem('user_token');
         const res = await apiFetch(`${API_URL}/api/activity`, {
-             headers: { 'Authorization': `Bearer ${token}` }
+            headers: { 'Authorization': `Bearer ${token}` }
         });
-        
         if (res.ok) {
             const data = await res.json();
             setActivities(data);

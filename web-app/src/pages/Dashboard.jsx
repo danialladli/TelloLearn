@@ -114,6 +114,7 @@ export default function Dashboard() {
             const allModulesData = await modulesRes.json();
 
             setAvatar(userData.avatar);
+            if (userData.id) localStorage.setItem('user_id', String(userData.id));
             try {
                 localStorage.setItem('cached_avatar', userData.avatar || '');
             } catch (e) {

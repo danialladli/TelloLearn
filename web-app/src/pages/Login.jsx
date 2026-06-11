@@ -71,6 +71,7 @@ export default function Login() {
         localStorage.setItem('username', data.username);
         localStorage.setItem('role', data.role);
         localStorage.setItem('user_token', data.token);
+        if (data.id) localStorage.setItem('user_id', String(data.id));
 
         // Route based on Role
         if (data.role === 'admin') {

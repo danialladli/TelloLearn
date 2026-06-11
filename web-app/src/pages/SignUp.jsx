@@ -87,6 +87,7 @@ export default function SignUp() {
         localStorage.removeItem('cached_modules');
         localStorage.removeItem('cached_avatar');
         localStorage.setItem('username', data.username);
+        if (data.id) localStorage.setItem('user_id', String(data.id));
         console.log('[SIGNUP] Session stored:', data.username);
         
         alert("Account created successfully! Logging you in...");
