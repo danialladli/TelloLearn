@@ -14,6 +14,24 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
+class _PollingFilter(logging.Filter):
+    """Drop uvicorn access-log lines for high-frequency polling endpoints."""
+    _SUPPRESSED = {
+        "/drone/status",
+        "/api/module2/telemetry",
+        "/api/module3/telemetry",
+        "/api/module4/telemetry",
+        "/api/module5/telemetry",
+    }
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not any(path in msg for path in self._SUPPRESSED)
+
+
+logging.getLogger("uvicorn.access").addFilter(_PollingFilter())
+
+
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(_):
