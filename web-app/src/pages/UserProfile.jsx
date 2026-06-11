@@ -27,37 +27,41 @@ export default function Profile() {
   });
 
   const [status, setStatus] = useState({ type: '', message: '' });
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    const fetchUserData = async () => {
-      const storedUsername = localStorage.getItem('username');
-      if (!storedUsername) {
-        navigate('/login');
-        return;
-      }
+    const storedUsername = localStorage.getItem('username');
+    if (!storedUsername) { navigate('/login'); return; }
 
-      try {
-        const response = await apiFetch(`${API_URL}/api/auth/me/${storedUsername}`);
-        if (response.ok) {
-          const data = await response.json();
-          setUserId(data.id);
-          setFormData({
-            username: data.username || '',
-            email: data.email || '',
-            password: '', 
-            avatar: data.avatar || AVATAR_OPTIONS[0] // Fallback to first avatar if none
-          });
-        }
-      } catch (err) {
-        console.error("Failed to load profile", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    // Pre-fill from localStorage immediately — no loading spinner needed
+    const storedId     = localStorage.getItem('user_id');
+    const storedEmail  = localStorage.getItem('user_email') || '';
+    const storedAvatar = localStorage.getItem('cached_avatar') || AVATAR_OPTIONS[0];
 
-    fetchUserData();
+    if (storedId) setUserId(storedId);
+    setFormData({
+      username: storedUsername,
+      email:    storedEmail,
+      password: '',
+      avatar:   storedAvatar
+    });
+
+    // Background refresh to pick up any server-side changes
+    apiFetch(`${API_URL}/api/auth/me/${storedUsername}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        if (data.id)    { setUserId(String(data.id)); localStorage.setItem('user_id', String(data.id)); }
+        if (data.email) { localStorage.setItem('user_email', data.email); }
+        setFormData({
+          username: data.username || storedUsername,
+          email:    data.email    || storedEmail,
+          password: '',
+          avatar:   data.avatar   || storedAvatar
+        });
+      })
+      .catch(() => { /* keep showing cached values */ });
   }, [navigate]);
 
   const handleChange = (e) => {
@@ -108,7 +112,6 @@ export default function Profile() {
     }
   };
 
-  if (isLoading) return <div className="min-h-screen bg-slate-900 flex justify-center items-center text-white">Loading Flight Profile...</div>;
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-6 md:p-12 font-sans">
