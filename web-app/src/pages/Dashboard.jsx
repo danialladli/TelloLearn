@@ -113,30 +113,36 @@ export default function Dashboard() {
             const userData = await userRes.json();
             const allModulesData = await modulesRes.json();
 
-            // Update state
             setAvatar(userData.avatar);
-            // Save to cache for next time
-            localStorage.setItem('cached_avatar', userData.avatar || '');
+            try {
+                localStorage.setItem('cached_avatar', userData.avatar || '');
+            } catch (e) {
+                console.warn('[DASHBOARD] Could not cache avatar:', e.message);
+            }
 
             const mergedModules = allModulesData.map(modDef => {
                 const userProgress = userData.modules && userData.modules[modDef.id];
-                
+
+                // Only cache the fields Dashboard actually needs.
+                // image_data (base64) is excluded — Dashboard uses the local
+                // MODULE_IMAGES map, and base64 strings blow the 5 MB localStorage quota.
                 return {
                     id: modDef.id,
                     title: modDef.title,
                     description: modDef.description,
-                    image_data: modDef.image_data, 
-                    status: userProgress ? userProgress.status : 'locked', 
+                    status: userProgress ? userProgress.status : 'locked',
                     is_locked: userProgress ? userProgress.status === 'locked' : true
                 };
             });
 
             mergedModules.sort((a, b) => parseInt(a.id) - parseInt(b.id));
 
-            // Update state
             setModules(mergedModules);
-            // Save to cache for next time
-            localStorage.setItem('cached_modules', JSON.stringify(mergedModules));
+            try {
+                localStorage.setItem('cached_modules', JSON.stringify(mergedModules));
+            } catch (e) {
+                console.warn('[DASHBOARD] Could not cache modules:', e.message);
+            }
 
             // Ensure loading is false (if cache was empty on very first login)
             setLoading(false);
