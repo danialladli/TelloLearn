@@ -210,7 +210,7 @@ for _ in range(500):
                 break
 
             speed_lr = int(error_x * GAIN)
-            speed_fb = int(-error_y * GAIN)
+            speed_fb = int(error_y * GAIN)
             drone.send_rc_control(speed_lr, speed_fb, 0, 0)
     else:
         drone.send_rc_control(0, 0, 0, 0)
@@ -312,8 +312,8 @@ We multiply the error by a small number (gain) to create smooth corrections.
     GAIN = 0.3
     TOLERANCE = 20  # Stop correcting when within 20 pixels of centre
 
-    speed_lr = int(error_x * GAIN)   # Positive = move right
-    speed_fb = int(-error_y * GAIN)  # Negative because Y axis is flipped
+    speed_lr = int(error_x * GAIN)  # Positive error_x = pad is right = move right
+    speed_fb = int(error_y * GAIN)  # Positive error_y = pad is below = move forward
 
     if abs(error_x) < TOLERANCE and abs(error_y) < TOLERANCE:
         drone.send_rc_control(0, 0, 0, 0)  # Centred! Stop moving
@@ -372,7 +372,7 @@ camera loop, centres above it, then lands automatically.
                     break
 
                 speed_lr = int(error_x * GAIN)
-                speed_fb = int(-error_y * GAIN)
+                speed_fb = int(error_y * GAIN)
                 drone.send_rc_control(speed_lr, speed_fb, 0, 0)
         else:
             drone.send_rc_control(0, 0, 0, 0)
@@ -390,11 +390,15 @@ camera loop, centres above it, then lands automatically.
     default_code: `from djitellopy import Tello
 import cv2
 import pytesseract
+from pytesseract import Output
 import time
 
 TARGET_WORD = "FLY"
 HOVER_DURATION = 3.0
 SPIN_SPEED = 15
+GAIN = 0.3
+TOLERANCE = 30
+FRAME_CX, FRAME_CY = 180, 120
 
 drone = Tello()
 drone.connect()
@@ -414,16 +418,48 @@ while True:
     frame = cv2.resize(frame, (360, 240))
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
+    # Get text AND bounding box position from pytesseract
     config = '--psm 10 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    detected = pytesseract.image_to_string(gray, config=config).strip()
+    data = pytesseract.image_to_data(gray, config=config, output_type=Output.DICT)
+
+    found = False
+    letter_cx, letter_cy = None, None
+
+    for i, text in enumerate(data['text']):
+        if current_target in text.strip():
+            x = data['left'][i]
+            y = data['top'][i]
+            w = data['width'][i]
+            h = data['height'][i]
+            if w > 0 and h > 0:
+                letter_cx = x + w // 2
+                letter_cy = y + h // 2
+                found = True
+                break
 
     if state == "SEARCHING":
-        if current_target in detected:
-            state = "HOVERING"
-            hover_start = time.time()
-            print("Found " + current_target + "! Hovering...")
+        if found:
+            state = "ALIGNING"
+            print("Found " + current_target + "! Aligning...")
         else:
             drone.send_rc_control(0, 0, 0, SPIN_SPEED)
+
+    elif state == "ALIGNING":
+        if not found:
+            state = "SEARCHING"
+        else:
+            error_x = letter_cx - FRAME_CX
+            error_y = letter_cy - FRAME_CY
+
+            if abs(error_x) < TOLERANCE and abs(error_y) < TOLERANCE:
+                drone.send_rc_control(0, 0, 0, 0)
+                state = "HOVERING"
+                hover_start = time.time()
+                print("Aligned! Hovering over " + current_target)
+            else:
+                speed_lr = int(error_x * GAIN)
+                speed_ud = -int(error_y * GAIN)
+                drone.send_rc_control(speed_lr, 0, speed_ud, 0)
 
     elif state == "HOVERING":
         drone.send_rc_control(0, 0, 0, 0)
@@ -444,43 +480,42 @@ print("Word spelled: " + TARGET_WORD)`,
 --------
 In this module, the drone searches for physical letter mats on the ground
 using its camera and OCR (Optical Character Recognition). When it spots the
-correct letter, it hovers above it for 3 seconds to claim it, then moves on
-to find the next letter to spell a target word.
+correct letter, it precisely aligns itself above it, then hovers for 3 seconds
+to claim it, and moves on to the next letter to spell a target word.
 
-Think of it like a drone spelling bee.
+Think of it like a drone spelling bee where the drone must park directly
+above each letter before scoring it.
 
 
 WHAT YOU WILL LEARN
 --------------------
-- What OCR is and how it reads text from images
-- How to set up a target word as a queue of letters
-- How to spin the drone to scan the environment
-- How to align the drone above a detected letter
-- How to use a timed hover to confirm a letter is "spelled"
+- What OCR is and how it reads text AND position from images
+- How image_to_data() returns bounding box coordinates for each character
+- How to calculate the alignment error from bounding box vs frame centre
+- How to use RC controls to steer the drone above a detected letter
 - How a Finite State Machine (FSM) organises complex drone behaviour
 
 
 WHAT IS A STATE MACHINE?
 -------------------------
 A state machine is a way of organising behaviour into distinct stages.
-The drone is always in one of these states:
+The drone is always in exactly one of these four states:
 
-    SEARCHING  - Spinning slowly, looking for the next target letter
-    ALIGNING   - Letter found, moving to centre above it
-    HOVERING   - Centred and holding position for 3 seconds
-    COMPLETE   - All letters spelled, ready to land
+    SEARCHING  - Spinning slowly, scanning for the next target letter
+    ALIGNING   - Letter found, moving to centre the drone above it
+    HOVERING   - Centred and holding still for 3 seconds to claim the letter
+    (loop end) - All letters spelled, land
 
 The drone transitions between states based on what the camera sees.
 
 
 STEP 1 - Set Up the Letter Queue
 ----------------------------------
-We break the target word into a list. The drone tackles one letter at a time
-by always looking at the front of the list.
+We break the target word into a list. The drone tackles one letter at a time.
 
     target_word = "FLY"
-    queue = list(target_word)    # Creates: ['F', 'L', 'Y']
-    current_target = queue.pop(0)  # Takes 'F' from the front
+    queue = list(target_word)       # Creates: ['F', 'L', 'Y']
+    current_target = queue.pop(0)   # Takes 'F' from the front
     print("Looking for:", current_target)
 
 
@@ -489,6 +524,7 @@ STEP 2 - Start the Camera and Take Off
     from djitellopy import Tello
     import cv2
     import pytesseract
+    from pytesseract import Output
     import time
 
     drone = Tello()
@@ -500,66 +536,106 @@ STEP 2 - Start the Camera and Take Off
     time.sleep(2)
 
 
-STEP 3 - Run OCR on Each Frame
---------------------------------
-pytesseract reads the text in an image. We convert to greyscale first
-because OCR works better on black and white images.
+STEP 3 - Read Letter Position with image_to_data()
+----------------------------------------------------
+image_to_string() only tells you WHAT text it sees.
+image_to_data() tells you WHAT and WHERE — it returns a dictionary
+with bounding box coordinates (left, top, width, height) for every
+detected character.
 
-    frame = drone.get_frame_read().frame
-    frame = cv2.resize(frame, (360, 240))
-
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-    # psm 10 tells Tesseract to look for a single character
-    # The whitelist tells it to only look for capital letters
     config = '--psm 10 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    detected_text = pytesseract.image_to_string(gray, config=config).strip()
+    data = pytesseract.image_to_data(gray, config=config, output_type=Output.DICT)
 
-    print("Detected:", detected_text)
+    # Loop through every detected word in the data
+    for i, text in enumerate(data['text']):
+        if current_target in text.strip():
+            x = data['left'][i]    # Left edge of the bounding box
+            y = data['top'][i]     # Top edge of the bounding box
+            w = data['width'][i]   # Width of the bounding box
+            h = data['height'][i]  # Height of the bounding box
+
+            if w > 0 and h > 0:
+                letter_cx = x + w // 2   # Centre X of the letter
+                letter_cy = y + h // 2   # Centre Y of the letter
+                found = True
 
 
 STEP 4 - SEARCHING State (Spin to Scan)
 -----------------------------------------
-If the target letter is not found, spin the drone slowly in place.
-The yaw speed of 15 means a gentle rotation — not too fast or the
-camera image will blur and OCR will fail.
+If the target letter is not found in this frame, spin the drone slowly.
+A yaw speed of 15 is a gentle rotation — not too fast or the camera image
+will blur and OCR will fail.
 
-    if current_target not in detected_text:
-        drone.send_rc_control(0, 0, 0, 15)  # Spin right slowly
+    if state == "SEARCHING":
+        if found:
+            state = "ALIGNING"
+            print("Found " + current_target + "! Aligning...")
+        else:
+            drone.send_rc_control(0, 0, 0, 15)  # Spin right slowly
 
 
-STEP 5 - HOVERING State (Hold Position for 3 Seconds)
--------------------------------------------------------
-Once the correct letter is detected, stop spinning and hover.
-We track how long we have been hovering using time.time().
+STEP 5 - ALIGNING State (Centre Above the Letter)
+---------------------------------------------------
+Once found, we calculate how far the letter is from the centre of the frame
+and fly toward it. FRAME_CX and FRAME_CY are the centre of the 360x240 frame.
+GAIN scales the error into a speed (-100 to 100). TOLERANCE is the pixel
+margin within which we consider the drone "aligned".
 
-    hover_start = time.time()
-    HOVER_DURATION = 3.0
+    FRAME_CX, FRAME_CY = 180, 120
+    GAIN = 0.3
+    TOLERANCE = 30
 
-    while time.time() - hover_start < HOVER_DURATION:
-        drone.send_rc_control(0, 0, 0, 0)  # Stay completely still
+    if state == "ALIGNING":
+        if not found:
+            state = "SEARCHING"   # Lost the letter, go back to scanning
+        else:
+            error_x = letter_cx - FRAME_CX   # Positive = letter is right of centre
+            error_y = letter_cy - FRAME_CY   # Positive = letter is below centre
 
-    print("Spelled:", current_target)
+            if abs(error_x) < TOLERANCE and abs(error_y) < TOLERANCE:
+                drone.send_rc_control(0, 0, 0, 0)
+                state = "HOVERING"
+                hover_start = time.time()
+                print("Aligned! Hovering over " + current_target)
+            else:
+                speed_lr = int(error_x * GAIN)    # Positive error_x = letter right = move right
+                speed_ud = -int(error_y * GAIN)   # Positive error_y = letter below = move down (negate)
+                drone.send_rc_control(speed_lr, 0, speed_ud, 0)
 
-    # Move to the next letter
-    if queue:
-        current_target = queue.pop(0)
+
+STEP 6 - HOVERING State (Hold for 3 Seconds)
+----------------------------------------------
+Once aligned, stop moving and stay still. After 3 seconds the letter is
+"claimed" and we move to the next one in the queue.
+
+    elif state == "HOVERING":
+        drone.send_rc_control(0, 0, 0, 0)
+        if time.time() - hover_start >= HOVER_DURATION:
+            print("Spelled: " + current_target)
+            if queue:
+                current_target = queue.pop(0)
+                state = "SEARCHING"
+            else:
+                break   # All letters spelled!
 
 
 FULL MISSION CODE
 -----------------
-This complete example spells the word "FLY" by searching for each letter,
-hovering above it, then moving to the next. It uses a simple state variable
-to track which phase the drone is in.
+This complete example spells "FLY" by searching, aligning, and hovering
+above each letter using precise bounding-box-based positioning.
 
     from djitellopy import Tello
     import cv2
     import pytesseract
+    from pytesseract import Output
     import time
 
     TARGET_WORD = "FLY"
     HOVER_DURATION = 3.0
     SPIN_SPEED = 15
+    GAIN = 0.3
+    TOLERANCE = 30
+    FRAME_CX, FRAME_CY = 180, 120
 
     drone = Tello()
     drone.connect()
@@ -578,33 +654,63 @@ to track which phase the drone is in.
         frame = drone.get_frame_read().frame
         frame = cv2.resize(frame, (360, 240))
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
         config = '--psm 10 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-        detected = pytesseract.image_to_string(gray, config=config).strip()
+        data = pytesseract.image_to_data(gray, config=config, output_type=Output.DICT)
+
+        found = False
+        letter_cx, letter_cy = None, None
+
+        for i, text in enumerate(data['text']):
+            if current_target in text.strip():
+                x = data['left'][i]
+                y = data['top'][i]
+                w = data['width'][i]
+                h = data['height'][i]
+                if w > 0 and h > 0:
+                    letter_cx = x + w // 2
+                    letter_cy = y + h // 2
+                    found = True
+                    break
 
         if state == "SEARCHING":
-            if current_target in detected:
-                state = "HOVERING"
-                hover_start = time.time()
-                print(f"Found {current_target}! Hovering...")
+            if found:
+                state = "ALIGNING"
+                print("Found " + current_target + "! Aligning...")
             else:
                 drone.send_rc_control(0, 0, 0, SPIN_SPEED)
+
+        elif state == "ALIGNING":
+            if not found:
+                state = "SEARCHING"
+            else:
+                error_x = letter_cx - FRAME_CX
+                error_y = letter_cy - FRAME_CY
+                if abs(error_x) < TOLERANCE and abs(error_y) < TOLERANCE:
+                    drone.send_rc_control(0, 0, 0, 0)
+                    state = "HOVERING"
+                    hover_start = time.time()
+                    print("Aligned! Hovering over " + current_target)
+                else:
+                    speed_lr = int(error_x * GAIN)
+                    speed_ud = -int(error_y * GAIN)
+                    drone.send_rc_control(speed_lr, 0, speed_ud, 0)
 
         elif state == "HOVERING":
             drone.send_rc_control(0, 0, 0, 0)
             if time.time() - hover_start >= HOVER_DURATION:
-                print(f"Spelled: {current_target}")
+                print("Spelled: " + current_target)
                 if queue:
                     current_target = queue.pop(0)
                     state = "SEARCHING"
-                    print(f"Now looking for: {current_target}")
+                    print("Now looking for: " + current_target)
                 else:
-                    state = "COMPLETE"
                     break
 
         time.sleep(0.05)
 
     drone.land()
-    print("Word spelled:", TARGET_WORD)`
+    print("Word spelled: " + TARGET_WORD)`
   },
   {
     id: 4,
@@ -845,17 +951,25 @@ A helper function handles the vector calculation and movement for each letter.
     title: "Swarm Leader-Follower",
     default_code: `from djitellopy import Tello
 import threading
+import math
 import time
 
-# Connect to both drones using their individual IP addresses
+# Formation offset: follower maintains this gap from the leader at all times
+OFFSET_X = 50   # 50 cm to the right of the leader
+OFFSET_Y = 0    # same depth as the leader (not ahead or behind)
+
 leader   = Tello("192.168.10.1")
 follower = Tello("192.168.10.2")
-
 leader.connect()
 follower.connect()
 
 print("Leader battery:   " + str(leader.get_battery()) + "%")
 print("Follower battery: " + str(follower.get_battery()) + "%")
+
+# World coordinate tracker: where each drone is on the floor (cm)
+leader_x, leader_y     = 0.0, 0.0
+follower_x, follower_y = float(OFFSET_X), float(OFFSET_Y)
+heading = 0.0   # degrees, 0 = north, 90 = east, clockwise positive
 
 def fly_both(cmd_leader, cmd_follower):
     t1 = threading.Thread(target=cmd_leader)
@@ -865,22 +979,81 @@ def fly_both(cmd_leader, cmd_follower):
     t1.join()
     t2.join()
 
-# Take off together
+def follower_target():
+    """Compute where follower needs to be in world coordinates.
+    Target = leader position + offset vector rotated by current heading."""
+    rad = math.radians(heading)
+    tx = leader_x + OFFSET_X * math.cos(rad) + OFFSET_Y * math.sin(rad)
+    ty = leader_y - OFFSET_X * math.sin(rad) + OFFSET_Y * math.cos(rad)
+    return tx, ty
+
+def move_follower_to_target():
+    """Issue move commands to close the gap between follower and target."""
+    global follower_x, follower_y
+
+    tx, ty = follower_target()
+    dx = tx - follower_x
+    dy = ty - follower_y
+
+    # Project world delta onto follower's local forward and right axes
+    rad = math.radians(heading)
+    fwd   = int(dx * math.sin(rad) + dy * math.cos(rad))
+    right = int(dx * math.cos(rad) - dy * math.sin(rad))
+
+    # Track only what is actually commanded (commands below 20 cm are skipped)
+    actual_fwd   = 0
+    actual_right = 0
+
+    if abs(fwd) >= 20:
+        if fwd > 0:
+            follower.move_forward(abs(fwd))
+        else:
+            follower.move_back(abs(fwd))
+        actual_fwd = fwd
+
+    if abs(right) >= 20:
+        if right > 0:
+            follower.move_right(abs(right))
+        else:
+            follower.move_left(abs(right))
+        actual_right = right
+
+    # Update tracked position AFTER commands, based on what was actually moved
+    follower_x += actual_fwd * math.sin(rad) + actual_right * math.cos(rad)
+    follower_y += actual_fwd * math.cos(rad) - actual_right * math.sin(rad)
+
+def formation_forward(dist):
+    """Leader moves forward; follower calculates its own correction to hold offset."""
+    global leader_x, leader_y
+    rad = math.radians(heading)
+    leader_x += dist * math.sin(rad)
+    leader_y += dist * math.cos(rad)
+    fly_both(
+        lambda: leader.move_forward(dist),
+        lambda: move_follower_to_target()
+    )
+
+def formation_rotate(deg):
+    """Both drones rotate; heading changes so offset direction shifts.
+    Follower repositions after rotation to restore correct alignment."""
+    global heading
+    fly_both(
+        lambda: leader.rotate_clockwise(deg),
+        lambda: follower.rotate_clockwise(deg)
+    )
+    heading = (heading + deg) % 360
+    move_follower_to_target()
+
+# Take off in formation
 fly_both(leader.takeoff, follower.takeoff)
 time.sleep(2)
 
 # Fly a square in formation (4 sides x 60 cm)
-for _ in range(4):
-    fly_both(
-        lambda: leader.move_forward(60),
-        lambda: follower.move_forward(60)
-    )
+for side in range(4):
+    print("Side " + str(side + 1) + " | Heading: " + str(int(heading)) + " deg")
+    formation_forward(60)
     time.sleep(1)
-
-    fly_both(
-        lambda: leader.rotate_clockwise(90),
-        lambda: follower.rotate_clockwise(90)
-    )
+    formation_rotate(90)
     time.sleep(1)
 
 # Land together
@@ -888,32 +1061,33 @@ fly_both(leader.land, follower.land)
 print("Formation flight complete!")`,
     docs: `OVERVIEW
 --------
-In this advanced module, you will control two drones at the same time.
-One drone acts as the Leader and the other as the Follower. Every command
-sent to the Leader is mirrored by the Follower, which maintains a fixed
-offset (gap) to stay beside the Leader without colliding.
+In this advanced module, you will control two drones at the same time
+using a Leader-Follower algorithm. The Leader flies freely. The Follower
+does NOT copy the leader's commands — instead it continuously calculates
+what commands IT needs to maintain a fixed spatial offset (e.g., always
+50 cm to the right of the Leader) no matter where the Leader goes or
+how it turns.
 
-This introduces you to swarm robotics and concurrent programming.
+This introduces you to swarm robotics, concurrent programming, and
+coordinate geometry.
 
 
 WHAT YOU WILL LEARN
 --------------------
-- How to connect to and manage multiple drones in one program
+- How to connect to and manage two drones in one program
 - What Python threading is and why it is essential for swarm control
-- How to calculate an offset position to prevent mid-air collisions
-- How to send identical commands to both drones at the exact same time
-- How to safely take off, fly patterns, and land a two-drone swarm
+- The difference between world coordinates and a drone's local frame
+- How to track drone positions and heading across a flight
+- How to rotate an offset vector to match the leader's heading
+- How to calculate the follower's unique commands from the offset error
 
 
 WHY DO WE NEED THREADING?
 ---------------------------
 If you send commands one after another (sequentially), the second drone
-always starts slightly later than the first. Over time, they fall out of
-sync. In the worst case, one drone moves while the other is still in
-position, and they collide.
+always starts slightly later. Over time, they fall out of sync.
 
-Threading lets both commands start at exactly the same millisecond,
-keeping both drones perfectly in sync at all times.
+Threading lets both commands start at the same millisecond.
 
     Without threading (WRONG):
         leader.takeoff()      <- Leader starts
@@ -925,95 +1099,152 @@ keeping both drones perfectly in sync at all times.
 
 STEP 1 - Connect to Both Drones
 ---------------------------------
-Each Tello drone has its own WiFi network. You connect them using their
-individual IP addresses. The default Tello IP is 192.168.10.1, but
-in a multi-drone setup each drone is assigned a unique IP.
+Each Tello drone has its own WiFi network and IP address.
 
     from djitellopy import Tello
     import threading
+    import math
     import time
 
-    leader   = Tello("192.168.10.1")   # Leader drone IP
-    follower = Tello("192.168.10.2")   # Follower drone IP
-
+    leader   = Tello("192.168.10.1")
+    follower = Tello("192.168.10.2")
     leader.connect()
     follower.connect()
 
-    print("Leader battery:  ", leader.get_battery(), "%")
-    print("Follower battery:", follower.get_battery(), "%")
+    print("Leader battery:   " + str(leader.get_battery()) + "%")
+    print("Follower battery: " + str(follower.get_battery()) + "%")
 
 
-STEP 2 - Create a Shared Command Function
-------------------------------------------
-This helper function takes two commands (one for each drone) and fires
-them both at the exact same time using two threads. It then waits for
-both to finish before returning.
+STEP 2 - Define the Formation Offset and World Tracker
+-------------------------------------------------------
+We define the offset in the leader's LOCAL frame (e.g., 50 cm to the right).
+We also track both drones' positions in WORLD coordinates (the floor map)
+and the leader's heading so we always know where everyone is.
 
-    def fly_both(cmd_leader, cmd_follower):
-        t1 = threading.Thread(target=cmd_leader)
-        t2 = threading.Thread(target=cmd_follower)
-        t1.start()   # Start Leader thread
-        t2.start()   # Start Follower thread at same instant
-        t1.join()    # Wait for Leader to finish
-        t2.join()    # Wait for Follower to finish
+    OFFSET_X = 50   # cm to the right of the leader
+    OFFSET_Y = 0    # same depth as the leader
 
-
-STEP 3 - Take Off Together
-----------------------------
-Use fly_both to take off at the same time. The follower should be placed
-50 cm to the right of the leader on the ground before takeoff.
-
-    fly_both(leader.takeoff, follower.takeoff)
-    time.sleep(2)
+    leader_x, leader_y     = 0.0, 0.0
+    follower_x, follower_y = float(OFFSET_X), float(OFFSET_Y)
+    heading = 0.0   # 0 = north, 90 = east, clockwise positive
 
 
-STEP 4 - Fly Movements Together
----------------------------------
-All movement commands use lambda functions to pass arguments to fly_both.
-Both drones fly the same distance so they stay side by side.
+STEP 3 - Compute Follower's Target Position
+--------------------------------------------
+When the leader moves or rotates, we recalculate where the follower
+NEEDS to be in world coordinates. The offset rotates with the leader's
+heading so "50 cm to the right" always means right from the leader's
+perspective, not right in the world.
 
-    # Fly forward together
-    fly_both(
-        lambda: leader.move_forward(50),
-        lambda: follower.move_forward(50)
-    )
-    time.sleep(1)
+    def follower_target():
+        rad = math.radians(heading)
+        tx = leader_x + OFFSET_X * math.cos(rad) + OFFSET_Y * math.sin(rad)
+        ty = leader_y - OFFSET_X * math.sin(rad) + OFFSET_Y * math.cos(rad)
+        return tx, ty
 
-    # Rotate together
-    fly_both(
-        lambda: leader.rotate_clockwise(90),
-        lambda: follower.rotate_clockwise(90)
-    )
-    time.sleep(1)
+Example — Leader faces north (heading=0):
+    Right in world = +X  →  target = (leader_x + 50, leader_y)
+
+Example — Leader faces east (heading=90):
+    Right in world = -Y  →  target = (leader_x, leader_y - 50)
+
+The target shifts with the heading. This is what keeps the formation
+meaningful even when the leader turns.
 
 
-STEP 5 - Land Together
-------------------------
-Always land both drones at the same time to prevent one from hovering
-alone while the other lands (which can cause instability).
+STEP 4 - Move Follower to Target (Different Commands from Leader)
+------------------------------------------------------------------
+Once we know the target, we compute the delta between where the
+follower IS and where it NEEDS to be, then project that delta into
+the follower's local frame to get forward/back and right/left commands.
 
-    fly_both(leader.land, follower.land)
-    print("Both drones landed safely.")
+    def move_follower_to_target():
+        global follower_x, follower_y
+        tx, ty = follower_target()
+        dx = tx - follower_x
+        dy = ty - follower_y
+
+        rad = math.radians(heading)
+        fwd   = int(dx * math.sin(rad) + dy * math.cos(rad))
+        right = int(dx * math.cos(rad) - dy * math.sin(rad))
+
+        actual_fwd   = 0
+        actual_right = 0
+
+        if abs(fwd) >= 20:
+            if fwd > 0:
+                follower.move_forward(abs(fwd))
+            else:
+                follower.move_back(abs(fwd))
+            actual_fwd = fwd
+
+        if abs(right) >= 20:
+            if right > 0:
+                follower.move_right(abs(right))
+            else:
+                follower.move_left(abs(right))
+            actual_right = right
+
+        # Update AFTER commands, using only what was actually commanded.
+        # Updating before would make dx/dy zero in the next call even if
+        # the drone has not physically moved yet.
+        follower_x += actual_fwd * math.sin(rad) + actual_right * math.cos(rad)
+        follower_y += actual_fwd * math.cos(rad) - actual_right * math.sin(rad)
+
+The follower's commands are DIFFERENT from the leader's. For example,
+after the leader turns 90 degrees, the follower may need to move
+sideways 50 cm while the leader just hovers — because the offset
+direction has shifted in world space.
+
+
+STEP 5 - Formation Move and Rotate Helpers
+-------------------------------------------
+These wrappers update the world tracker and issue threaded commands.
+formation_forward moves the leader and simultaneously corrects the
+follower. formation_rotate turns both, then repositions the follower.
+
+    def formation_forward(dist):
+        global leader_x, leader_y
+        rad = math.radians(heading)
+        leader_x += dist * math.sin(rad)
+        leader_y += dist * math.cos(rad)
+        fly_both(
+            lambda: leader.move_forward(dist),
+            lambda: move_follower_to_target()
+        )
+
+    def formation_rotate(deg):
+        global heading
+        fly_both(
+            lambda: leader.rotate_clockwise(deg),
+            lambda: follower.rotate_clockwise(deg)
+        )
+        heading = (heading + deg) % 360
+        move_follower_to_target()   # reposition after heading change
 
 
 FULL MISSION CODE
 -----------------
-This complete example connects to two drones, takes off together, flies
-a square pattern in formation, then lands together.
+This complete example flies a square in formation. The follower
+computes its own unique commands every step to stay 50 cm to the
+right of the leader regardless of direction.
 
     from djitellopy import Tello
     import threading
+    import math
     import time
 
-    # Connect to both drones
+    OFFSET_X = 50
+    OFFSET_Y = 0
+
     leader   = Tello("192.168.10.1")
     follower = Tello("192.168.10.2")
-
     leader.connect()
     follower.connect()
 
-    print("Leader battery:  ", leader.get_battery(), "%")
-    print("Follower battery:", follower.get_battery(), "%")
+    leader_x, leader_y     = 0.0, 0.0
+    follower_x, follower_y = float(OFFSET_X), float(OFFSET_Y)
+    heading = 0.0
 
     def fly_both(cmd_leader, cmd_follower):
         t1 = threading.Thread(target=cmd_leader)
@@ -1023,25 +1254,66 @@ a square pattern in formation, then lands together.
         t1.join()
         t2.join()
 
-    # Take off
+    def follower_target():
+        rad = math.radians(heading)
+        tx = leader_x + OFFSET_X * math.cos(rad) + OFFSET_Y * math.sin(rad)
+        ty = leader_y - OFFSET_X * math.sin(rad) + OFFSET_Y * math.cos(rad)
+        return tx, ty
+
+    def move_follower_to_target():
+        global follower_x, follower_y
+        tx, ty = follower_target()
+        dx = tx - follower_x
+        dy = ty - follower_y
+        rad = math.radians(heading)
+        fwd   = int(dx * math.sin(rad) + dy * math.cos(rad))
+        right = int(dx * math.cos(rad) - dy * math.sin(rad))
+        actual_fwd   = 0
+        actual_right = 0
+        if abs(fwd) >= 20:
+            if fwd > 0:
+                follower.move_forward(abs(fwd))
+            else:
+                follower.move_back(abs(fwd))
+            actual_fwd = fwd
+        if abs(right) >= 20:
+            if right > 0:
+                follower.move_right(abs(right))
+            else:
+                follower.move_left(abs(right))
+            actual_right = right
+        follower_x += actual_fwd * math.sin(rad) + actual_right * math.cos(rad)
+        follower_y += actual_fwd * math.cos(rad) - actual_right * math.sin(rad)
+
+    def formation_forward(dist):
+        global leader_x, leader_y
+        rad = math.radians(heading)
+        leader_x += dist * math.sin(rad)
+        leader_y += dist * math.cos(rad)
+        fly_both(
+            lambda: leader.move_forward(dist),
+            lambda: move_follower_to_target()
+        )
+
+    def formation_rotate(deg):
+        global heading
+        fly_both(
+            lambda: leader.rotate_clockwise(deg),
+            lambda: follower.rotate_clockwise(deg)
+        )
+        heading = (heading + deg) % 360
+        move_follower_to_target()
+
     fly_both(leader.takeoff, follower.takeoff)
     time.sleep(2)
 
-    # Fly a square in formation (4 sides)
-    for _ in range(4):
-        fly_both(
-            lambda: leader.move_forward(60),
-            lambda: follower.move_forward(60)
-        )
+    for side in range(4):
+        print("Side " + str(side + 1) + " | Heading: " + str(int(heading)) + " deg")
+        formation_forward(60)
+        time.sleep(1)
+        formation_rotate(90)
         time.sleep(1)
 
-        fly_both(
-            lambda: leader.rotate_clockwise(90),
-            lambda: follower.rotate_clockwise(90)
-        )
-        time.sleep(1)
-
-    # Land together
     fly_both(leader.land, follower.land)
     print("Formation flight complete!")`
   }

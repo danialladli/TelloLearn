@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronRight, ChevronLeft, Play, FileText, Code, Home, AlertCircle, CheckCircle } from 'lucide-react';
-import axios from 'axios';
 import { MODULE_CONTENT } from '../../assets/strings/moduleStrings';
 import { API_URL, apiFetch } from '../config';
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { API_URL, apiFetch } from '../config';
 
@@ -25,13 +25,6 @@ export default function SignUp() {
   
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Clear localStorage on component mount
-  useEffect(() => {
-    console.log('[SIGNUP] Clearing localStorage on page load');
-    localStorage.clear();
-    console.log('[SIGNUP] localStorage cleared');
-  }, []);
 
   // 2. Update state on typing
   const handleChange = (e) => {
@@ -89,9 +82,10 @@ export default function SignUp() {
       console.log('[SIGNUP] Response received:', { status: response.status, data });
 
       if (response.ok) {
-        // SUCCESS: Store only the username (lightweight session)
+        // SUCCESS: Clear previous user's cache then store new session
         console.log('✅ [SIGNUP] User registration successful!');
-        // Store only username - all data will be fetched from DB
+        localStorage.removeItem('cached_modules');
+        localStorage.removeItem('cached_avatar');
         localStorage.setItem('username', data.username);
         console.log('[SIGNUP] Session stored:', data.username);
         

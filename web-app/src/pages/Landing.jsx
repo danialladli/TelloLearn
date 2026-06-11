@@ -1,14 +1,8 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle, Users, Zap } from 'lucide-react';
 
 export default function Landing() {
-  useEffect(() => {
-    // Clear all localStorage on landing page load
-    console.log('[LANDING] Clearing all localStorage data');
-    localStorage.clear();
-    console.log('[LANDING] localStorage cleared successfully');
-  }, []);
 
   return (
     <div className="min-h-screen bg-white">

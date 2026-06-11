@@ -22,12 +22,6 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [selectedRole, setSelectedRole] = useState('learner');
 
-  // Clear localStorage on component mount
-  useEffect(() => {
-    console.log('[LOGIN] Clearing localStorage on page load');
-    localStorage.clear();
-    console.log('[LOGIN] localStorage cleared');
-  }, []);
 
   // 2. Handle typing in inputs
   const handleChange = (e) => {
@@ -71,7 +65,9 @@ export default function Login() {
         }
 
         // --- 2. SUCCESS ---
-        // Store Session
+        // Clear previous user's cache before storing new session
+        localStorage.removeItem('cached_modules');
+        localStorage.removeItem('cached_avatar');
         localStorage.setItem('username', data.username);
         localStorage.setItem('role', data.role);
         localStorage.setItem('user_token', data.token);
