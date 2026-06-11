@@ -4,6 +4,38 @@ export const MODULE_CONTENT = [
   {
     id: 1,
     title: "Basic Flight Operations",
+    default_code: `from djitellopy import Tello
+import time
+
+# Connect to the drone
+drone = Tello()
+drone.connect()
+print("Battery:", drone.get_battery(), "%")
+
+# Take off and hover
+drone.takeoff()
+time.sleep(2)
+
+# Fly a square pattern (50 cm per side)
+drone.move_forward(50)
+time.sleep(1)
+
+drone.move_right(50)
+time.sleep(1)
+
+drone.move_back(50)
+time.sleep(1)
+
+drone.move_left(50)
+time.sleep(1)
+
+# Rotate in place
+drone.rotate_clockwise(180)
+time.sleep(1)
+
+# Land safely
+drone.land()
+print("Mission complete!")`,
     docs: `OVERVIEW
 --------
 In this module, you will learn how to control a Tello drone using Python.
@@ -128,6 +160,67 @@ then lands. Use this as a reference when writing your own mission.
   {
     id: 2,
     title: "Autonomous Target Landing",
+    default_code: `from djitellopy import Tello
+import cv2
+import numpy as np
+import time
+
+# Colour range for the green landing pad (HSV)
+LOWER_GREEN = np.array([40, 70, 70])
+UPPER_GREEN = np.array([80, 255, 255])
+
+# Frame centre and control settings
+FRAME_CX, FRAME_CY = 180, 120
+TOLERANCE = 25
+GAIN = 0.3
+
+drone = Tello()
+drone.connect()
+drone.streamon()
+time.sleep(2)
+
+drone.takeoff()
+time.sleep(2)
+
+landed = False
+
+for _ in range(500):
+    frame = drone.get_frame_read().frame
+    frame = cv2.resize(frame, (360, 240))
+
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, LOWER_GREEN, UPPER_GREEN)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if contours:
+        largest = max(contours, key=cv2.contourArea)
+        if cv2.contourArea(largest) > 500:
+            x, y, w, h = cv2.boundingRect(largest)
+            pad_cx = x + w // 2
+            pad_cy = y + h // 2
+
+            error_x = pad_cx - FRAME_CX
+            error_y = pad_cy - FRAME_CY
+
+            if abs(error_x) < TOLERANCE and abs(error_y) < TOLERANCE:
+                drone.send_rc_control(0, 0, 0, 0)
+                time.sleep(0.5)
+                drone.land()
+                landed = True
+                break
+
+            speed_lr = int(error_x * GAIN)
+            speed_fb = int(-error_y * GAIN)
+            drone.send_rc_control(speed_lr, speed_fb, 0, 0)
+    else:
+        drone.send_rc_control(0, 0, 0, 0)
+
+    time.sleep(0.05)
+
+if not landed:
+    drone.land()
+
+print("Mission complete!")`,
     docs: `OVERVIEW
 --------
 In this module, the drone uses its front camera and computer vision to find
@@ -294,6 +387,59 @@ camera loop, centres above it, then lands automatically.
   {
     id: 3,
     title: "Alphabet Recognition & Hovering",
+    default_code: `from djitellopy import Tello
+import cv2
+import pytesseract
+import time
+
+TARGET_WORD = "FLY"
+HOVER_DURATION = 3.0
+SPIN_SPEED = 15
+
+drone = Tello()
+drone.connect()
+drone.streamon()
+time.sleep(2)
+
+queue = list(TARGET_WORD)
+current_target = queue.pop(0)
+state = "SEARCHING"
+hover_start = None
+
+drone.takeoff()
+time.sleep(2)
+
+while True:
+    frame = drone.get_frame_read().frame
+    frame = cv2.resize(frame, (360, 240))
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    config = '--psm 10 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    detected = pytesseract.image_to_string(gray, config=config).strip()
+
+    if state == "SEARCHING":
+        if current_target in detected:
+            state = "HOVERING"
+            hover_start = time.time()
+            print("Found " + current_target + "! Hovering...")
+        else:
+            drone.send_rc_control(0, 0, 0, SPIN_SPEED)
+
+    elif state == "HOVERING":
+        drone.send_rc_control(0, 0, 0, 0)
+        if time.time() - hover_start >= HOVER_DURATION:
+            print("Spelled: " + current_target)
+            if queue:
+                current_target = queue.pop(0)
+                state = "SEARCHING"
+                print("Now looking for: " + current_target)
+            else:
+                break
+
+    time.sleep(0.05)
+
+drone.land()
+print("Word spelled: " + TARGET_WORD)`,
     docs: `OVERVIEW
 --------
 In this module, the drone searches for physical letter mats on the ground
@@ -463,6 +609,66 @@ to track which phase the drone is in.
   {
     id: 4,
     title: "Spatial Navigation & Vectors",
+    default_code: `from djitellopy import Tello
+import time
+
+# Grid map: each letter maps to an (X, Y) position in centimetres
+ALPHABET_MAP = {
+    'A': (0,   0),
+    'B': (50,  0),
+    'C': (100, 0),
+    'F': (0,   50),
+    'L': (50,  50),
+    'Y': (100, 50),
+}
+
+TARGET_WORD = "FLY"
+current_pos = [0, 0]
+
+drone = Tello()
+drone.connect()
+time.sleep(1)
+print("Battery:", drone.get_battery(), "%")
+
+def navigate_to(letter):
+    global current_pos
+
+    target_pos = ALPHABET_MAP[letter]
+    dx = target_pos[0] - current_pos[0]
+    dy = target_pos[1] - current_pos[1]
+
+    print("Navigating to " + letter + " | dx=" + str(dx) + " dy=" + str(dy))
+
+    # Move along X axis
+    if dx > 0:
+        drone.move_right(dx)
+    elif dx < 0:
+        drone.move_left(abs(dx))
+    time.sleep(1)
+
+    # Move along Y axis
+    if dy > 0:
+        drone.move_forward(dy)
+    elif dy < 0:
+        drone.move_back(abs(dy))
+    time.sleep(1)
+
+    # Update current position
+    current_pos[0] = target_pos[0]
+    current_pos[1] = target_pos[1]
+
+    # Hover to claim the letter
+    time.sleep(3)
+    print("Claimed: " + letter)
+
+drone.takeoff()
+time.sleep(2)
+
+for letter in TARGET_WORD:
+    navigate_to(letter)
+
+drone.land()
+print("Mission complete! Spelled: " + TARGET_WORD)`,
     docs: `OVERVIEW
 --------
 In this module, the drone navigates a physical grid of alphabet mats placed
@@ -637,6 +843,49 @@ A helper function handles the vector calculation and movement for each letter.
   {
     id: 5,
     title: "Swarm Leader-Follower",
+    default_code: `from djitellopy import Tello
+import threading
+import time
+
+# Connect to both drones using their individual IP addresses
+leader   = Tello("192.168.10.1")
+follower = Tello("192.168.10.2")
+
+leader.connect()
+follower.connect()
+
+print("Leader battery:   " + str(leader.get_battery()) + "%")
+print("Follower battery: " + str(follower.get_battery()) + "%")
+
+def fly_both(cmd_leader, cmd_follower):
+    t1 = threading.Thread(target=cmd_leader)
+    t2 = threading.Thread(target=cmd_follower)
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+# Take off together
+fly_both(leader.takeoff, follower.takeoff)
+time.sleep(2)
+
+# Fly a square in formation (4 sides x 60 cm)
+for _ in range(4):
+    fly_both(
+        lambda: leader.move_forward(60),
+        lambda: follower.move_forward(60)
+    )
+    time.sleep(1)
+
+    fly_both(
+        lambda: leader.rotate_clockwise(90),
+        lambda: follower.rotate_clockwise(90)
+    )
+    time.sleep(1)
+
+# Land together
+fly_both(leader.land, follower.land)
+print("Formation flight complete!")`,
     docs: `OVERVIEW
 --------
 In this advanced module, you will control two drones at the same time.

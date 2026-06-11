@@ -38,6 +38,9 @@ export default function Module() {
                 const localContent = MODULE_CONTENT.find(m => String(m.id) === String(safeId));
                 if (localContent) {
                     currentMod.docs = localContent.docs;
+                    if (localContent.default_code) {
+                        currentMod.default_code = localContent.default_code;
+                    }
                 }
 
                 console.log('[MODULE] Loaded data for:', currentMod.title);
