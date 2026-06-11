@@ -21,41 +21,57 @@ export default function Module() {
   const lineNumbersRef = useRef(null);
   const [validation, setValidation] = useState({ isValid: true, message: "System Ready" });
 
-  // --- 1. FETCH MODULE DATA FROM DB ---
+  // --- 1. LOAD MODULE DATA (cache-first, API fallback) ---
   useEffect(() => {
-    const fetchModuleData = async () => {
-        setContentLoading(true);
+    const localContent = MODULE_CONTENT.find(m => String(m.id) === String(safeId));
+
+    // Helper: apply local strings override and commit to state
+    const applyAndSet = (mod) => {
+        if (localContent) {
+            mod.docs = localContent.docs;
+            if (localContent.default_code) mod.default_code = localContent.default_code;
+        }
+        setModuleData(mod);
+        setCode(mod.default_code || '');
+    };
+
+    // 1. Try the Dashboard cache first — renders the page instantly
+    try {
+        const cached = localStorage.getItem('cached_modules');
+        if (cached) {
+            const cachedMod = JSON.parse(cached).find(m => String(m.id) === String(safeId));
+            if (cachedMod) {
+                applyAndSet({ ...cachedMod });
+                setContentLoading(false);
+                // Modules 1-5 have local docs/code — no API call needed
+                if (localContent) return;
+            }
+        }
+    } catch (_) { /* corrupt cache — fall through to API */ }
+
+    // 2. Cache miss or admin module (6+) — must fetch from API
+    setContentLoading(true);
+    const fetchFromAPI = async () => {
         try {
             const res = await apiFetch(`${API_URL}/api/modules`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const allModules = await res.json();
-            
-            // Find the current module from the database
             const currentMod = allModules.find(m => String(m.id) === String(safeId));
-
             if (currentMod) {
-                // HYBRID FIX: Inject the formatted docs from our local strings file!
-                const localContent = MODULE_CONTENT.find(m => String(m.id) === String(safeId));
-                if (localContent) {
-                    currentMod.docs = localContent.docs;
-                    if (localContent.default_code) {
-                        currentMod.default_code = localContent.default_code;
-                    }
-                }
-
-                console.log('[MODULE] Loaded data for:', currentMod.title);
-                setModuleData(currentMod);
-                setCode(currentMod.default_code || "");
+                applyAndSet(currentMod);
             } else {
                 console.error('[MODULE] Module not found for ID:', safeId);
+                setModuleData(null);
             }
         } catch (error) {
             console.error('[MODULE] Failed to fetch module data:', error);
+            // Only wipe the screen if nothing was rendered from cache
+            setModuleData(prev => prev ?? null);
         } finally {
             setContentLoading(false);
         }
     };
-
-    fetchModuleData();
+    fetchFromAPI();
   }, [safeId]);
 
   // --- 2. LOAD USER DATA FROM LOCAL STORAGE (no API call needed) ---
@@ -163,21 +179,29 @@ export default function Module() {
       return <div className="h-screen bg-tello-dark flex items-center justify-center text-white">Loading Mission Data...</div>;
   }
 
-  // ERROR UI (Prevents blank screen)
+  // ERROR UI
   if (!moduleData) {
       return (
-        <div className="h-screen bg-tello-dark flex flex-col items-center justify-center text-white gap-4">
-            <h2 className="text-2xl font-bold text-red-400">Mission Data Not Found</h2>
-            <p className="text-slate-400">Could not load content for Module {safeId}.</p>
-            <div className="text-xs bg-black p-4 rounded font-mono text-slate-500">
-                Debug Tip: Check if http://127.0.0.1:8000/api/modules returns data.
+        <div className="h-screen bg-tello-dark flex flex-col items-center justify-center text-white gap-4 px-6 text-center">
+            <h2 className="text-2xl font-bold text-red-400">Cannot Reach Ground Station</h2>
+            <p className="text-slate-400 max-w-md">
+                The backend tunnel is offline or unreachable. Start your backend and make sure
+                the VS Code port forwarding (or ngrok) tunnel is active, then try again.
+            </p>
+            <div className="flex gap-3 mt-2">
+                <button
+                    onClick={() => window.location.reload()}
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium"
+                >
+                    Retry
+                </button>
+                <button
+                    onClick={() => navigate('/dashboard')}
+                    className="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg"
+                >
+                    Back to Dashboard
+                </button>
             </div>
-            <button 
-                onClick={() => navigate('/dashboard')}
-                className="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg"
-            >
-                Return to Dashboard
-            </button>
         </div>
       );
   }

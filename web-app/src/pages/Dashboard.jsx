@@ -131,6 +131,7 @@ export default function Dashboard() {
                     id: modDef.id,
                     title: modDef.title,
                     description: modDef.description,
+                    video_url: modDef.video_url || '',
                     status: userProgress ? userProgress.status : 'locked',
                     is_locked: userProgress ? userProgress.status === 'locked' : true
                 };
