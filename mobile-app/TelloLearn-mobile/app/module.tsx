@@ -3,13 +3,16 @@ import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet } from 'rea
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import { useApiUrl } from '@/utils/apiConfig';
 
 import Module1UI from '@/components/modules/Module1UI';
 import Module2UI from '@/components/modules/Module2UI';
 import Module3UI from '../components/modules/Module3UI';
 import Module4UI from '../components/modules/Module4UI';
+import Module5UI from '../components/modules/Module5UI';
 
 export default function ModuleScreen() {
+  const { apiUrl: API_URL } = useApiUrl();
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const moduleKey = Array.isArray(id) ? id[0] : String(id);
@@ -24,14 +27,12 @@ export default function ModuleScreen() {
     const checkAccess = async () => {
       try {
         const token = await AsyncStorage.getItem('user_token');
-        const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-
-        if (!token || !apiUrl) {
+        if (!token) {
           router.replace('./login');
           return;
         }
 
-        const response = await axios.get(`${apiUrl}/api/user/sync`, {
+        const response = await axios.get(`${API_URL}/api/user/sync`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -51,11 +52,18 @@ export default function ModuleScreen() {
   useEffect(() => {
     const loadModuleTemplate = async () => {
       try {
-        if (moduleKey === '1') {
-          setModuleData({ id: '1', title: 'Module 1: Basic Flight', ui_type: 'block_coding' });
-        } else {
-          setModuleData({ id: moduleKey, title: `Module ${moduleKey}`, ui_type: 'live_video' });
-        }
+        const UI_TYPES: Record<string, string> = {
+          '1': 'block_coding',
+          '2': 'live_video',
+          '3': 'alphabet_recognition',
+          '4': 'shortest_path',
+          '5': 'swarm_routine',
+        };
+        setModuleData({
+          id: moduleKey,
+          title: `Module ${moduleKey}`,
+          ui_type: UI_TYPES[moduleKey] ?? 'unsupported',
+        });
       } catch {
         console.error("Failed to load module routing data");
       } finally {
@@ -93,18 +101,15 @@ export default function ModuleScreen() {
   }
 
   switch (moduleData?.ui_type) {
-    case 'block_coding':
-      return <Module1UI moduleData={moduleData} />;
-    case 'live_video':
-      return <Module2UI moduleData={moduleData} />;
-    case 'alphabet_recognition':
-      return <Module3UI moduleData={moduleData} />;
-    case 'shortest_path':
-      return <Module4UI moduleData={moduleData} />;
+    case 'block_coding':        return <Module1UI moduleData={moduleData} />;
+    case 'live_video':          return <Module2UI moduleData={moduleData} />;
+    case 'alphabet_recognition':return <Module3UI moduleData={moduleData} />;
+    case 'shortest_path':       return <Module4UI moduleData={moduleData} />;
+    case 'swarm_routine':       return <Module5UI moduleData={moduleData} />;
     default:
       return (
         <View style={styles.centered}>
-          <Text style={{ color: 'white' }}>Unsupported Module Template: {moduleData?.ui_type}</Text>
+          <Text style={{ color: 'white' }}>Unsupported Module: {moduleData?.ui_type}</Text>
         </View>
       );
   }
