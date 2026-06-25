@@ -3,40 +3,46 @@ class BasicFlightController:
         self.drone = drone
 
     def execute(self, command: str):
-        """Executes a single flight command on the real Tello drone."""
+        """Executes a single flight command. Supports 'cmd' and 'cmd distance' formats."""
         try:
-            if command == "takeoff":
+            parts = command.strip().split()
+            cmd = parts[0].lower()
+            dist = int(parts[1]) if len(parts) > 1 else 0
+
+            if cmd == "takeoff":
                 self.drone.takeoff()
-            elif command == "land":
+            elif cmd == "land":
                 self.drone.land()
-            elif command == "up":
-                self.drone.move_up(30)
-            elif command == "down":
-                self.drone.move_down(30)
-            elif command == "forward":
-                self.drone.move_forward(50)
-            elif command == "back":
-                self.drone.move_back(50)
-            elif command == "left":
-                self.drone.move_left(50)
-            elif command == "right":
-                self.drone.move_right(50)
-            elif command == "cw":
-                self.drone.rotate_clockwise(90)
-            elif command == "ccw":
-                self.drone.rotate_counter_clockwise(90)
-            elif command == "flip_f":
+            elif cmd == "stop":
+                self.drone.send_rc_control(0, 0, 0, 0)
+            elif cmd == "up":
+                self.drone.move_up(dist or 30)
+            elif cmd == "down":
+                self.drone.move_down(dist or 30)
+            elif cmd == "forward":
+                self.drone.move_forward(dist or 50)
+            elif cmd == "back":
+                self.drone.move_back(dist or 50)
+            elif cmd == "left":
+                self.drone.move_left(dist or 50)
+            elif cmd == "right":
+                self.drone.move_right(dist or 50)
+            elif cmd == "cw":
+                self.drone.rotate_clockwise(dist or 90)
+            elif cmd == "ccw":
+                self.drone.rotate_counter_clockwise(dist or 90)
+            elif cmd == "flip_f":
                 self.drone.flip_forward()
-            elif command == "flip_b":
+            elif cmd == "flip_b":
                 self.drone.flip_back()
-            elif command == "flip_l":
+            elif cmd == "flip_l":
                 self.drone.flip_left()
-            elif command == "flip_r":
+            elif cmd == "flip_r":
                 self.drone.flip_right()
             else:
                 return {"error": f"Unknown command: {command}"}
 
-            return {"status": f"Executed {command}"}
+            return {"status": f"Executed: {command}"}
 
         except Exception as e:
             return {"error": str(e)}
