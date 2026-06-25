@@ -14,6 +14,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { useRouter } from 'expo-router';
+import { useApiUrl } from '@/utils/apiConfig';
 import { StatusBar } from 'expo-status-bar';
 import * as ScreenOrientation from 'expo-screen-orientation';
 
@@ -28,7 +29,8 @@ const COLORS = {
 };
 
 export default function LoginScreen() {
-  const router = useRouter(); 
+  const { apiUrl: API_URL } = useApiUrl();
+  const router = useRouter();
   
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -43,13 +45,7 @@ export default function LoginScreen() {
     setLoading(true);
 
     try {
-      const serverIp = process.env.EXPO_PUBLIC_API_URL;
-      if (!serverIp) {
-         Alert.alert("Configuration Error", "Server URL not configured. Set EXPO_PUBLIC_API_URL in your .env file.");
-         return;
-      }
-
-      const fullUrl = `${serverIp}/api/auth/login`;
+      const fullUrl = `${API_URL}/api/auth/login`;
       console.log(`[LOGIN] Sending credentials to ${fullUrl}...`);
 
       const response = await axios.post(fullUrl, {

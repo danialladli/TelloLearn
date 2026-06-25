@@ -5,8 +5,10 @@ import { XCircle, Play, Square, AlertOctagon, Mic, Navigation, MoveUpRight, Targ
 import axios from 'axios';
 import DroneStatusBadge from '@/components/DroneStatusBadge';
 import { checkDroneConnected } from '@/utils/droneCheck';
+import { useApiUrl } from '@/utils/apiConfig';
 
 export default function Module4UI({ moduleData }: { moduleData: any }) {
+  const { apiUrl: API_URL } = useApiUrl();
   const router = useRouter();
   
   // Mission & Voice State
@@ -22,8 +24,7 @@ export default function Module4UI({ moduleData }: { moduleData: any }) {
   const [vector, setVector] = useState([0, 0]);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const serverIp = process.env.EXPO_PUBLIC_API_URL;
-  const videoStreamUrl = `${serverIp}/video_feed`;
+  const videoStreamUrl = `${API_URL}/video_feed`;
 
   // --- LIVE TELEMETRY POLLING ---
   useEffect(() => {
@@ -32,7 +33,7 @@ export default function Module4UI({ moduleData }: { moduleData: any }) {
     if (missionActive) {
       intervalId = setInterval(async () => {
         try {
-          const response = await axios.get(`${serverIp}/api/module4/telemetry`);
+          const response = await axios.get(`${API_URL}/api/module4/telemetry`);
           const data = response.data;
 
           setFlightState(data.state);
@@ -53,7 +54,7 @@ export default function Module4UI({ moduleData }: { moduleData: any }) {
     }
 
     return () => clearInterval(intervalId);
-  }, [missionActive, serverIp, flightState]);
+  }, [missionActive, flightState]);
 
   // --- SIMULATED SPEECH RECOGNITION ---
   const handleVoiceInput = () => {
@@ -78,7 +79,7 @@ export default function Module4UI({ moduleData }: { moduleData: any }) {
     if (missionActive) {
       console.log('[MODULE 4] Mission stopped by user');
       setMissionActive(false);
-      axios.post(`${serverIp}/api/module1/land`).catch(() => {});
+      axios.post(`${API_URL}/api/module1/land`).catch(() => {});
       return;
     }
 
@@ -87,7 +88,7 @@ export default function Module4UI({ moduleData }: { moduleData: any }) {
       return;
     }
 
-    if (!await checkDroneConnected()) return;
+    if (!await checkDroneConnected(API_URL)) return;
 
     console.log(`[MODULE 4] Drone check passed — starting countdown for word: "${transcribedText}"`);
     let count = 3;
@@ -104,8 +105,8 @@ export default function Module4UI({ moduleData }: { moduleData: any }) {
 
         try {
           console.log(`[MODULE 4] Sending takeoff + start navigation for word: "${transcribedText}"`);
-          await axios.post(`${serverIp}/api/module1/takeoff`);
-          await axios.post(`${serverIp}/api/module4/start`, { word: transcribedText });
+          await axios.post(`${API_URL}/api/module1/takeoff`);
+          await axios.post(`${API_URL}/api/module4/start`, { word: transcribedText });
           console.log('[MODULE 4] Mission commands sent successfully');
         } catch (e) {
           console.error('[MODULE 4] Failed to start mission:', e);
@@ -120,7 +121,7 @@ export default function Module4UI({ moduleData }: { moduleData: any }) {
     if (timerRef.current) clearInterval(timerRef.current);
     setCountdown(null);
     setMissionActive(false);
-    axios.post(`${serverIp}/api/module1/land`);
+    axios.post(`${API_URL}/api/module1/land`);
   };
 
   return (

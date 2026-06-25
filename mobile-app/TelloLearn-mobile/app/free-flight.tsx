@@ -5,10 +5,12 @@ import { Colors } from '@/constants/theme';
 import { XCircle, ArrowUpCircle, ArrowDownCircle } from 'lucide-react-native';
 import Joystick from '@/components/modules/Joystick';
 import axios from 'axios';
+import { useApiUrl } from '@/utils/apiConfig';
 import DroneStatusBadge from '@/components/DroneStatusBadge';
 import { checkDroneConnected } from '@/utils/droneCheck';
 
 export default function FreeFlightScreen() {
+  const { apiUrl: API_URL } = useApiUrl();
   const router = useRouter();
   const theme = Colors.dark;
   
@@ -19,13 +21,11 @@ export default function FreeFlightScreen() {
 
   // THE RC LOOP: Sends commands to the server 10 times a second
   useEffect(() => {
-    const serverIp = process.env.EXPO_PUBLIC_API_URL;
-    
     const rcInterval = setInterval(async () => {
       // Only send if joysticks are actively being moved (saves battery and network)
       if (leftJoy.current.x !== 0 || leftJoy.current.y !== 0 || rightJoy.current.x !== 0 || rightJoy.current.y !== 0) {
         try {
-          await axios.post(`${serverIp}/api/module1/rc`, {
+          await axios.post(`${API_URL}/api/module1/rc`, {
             left_right: rightJoy.current.x,    // Roll
             forward_backward: rightJoy.current.y, // Pitch
             up_down: leftJoy.current.y,        // Altitude
@@ -41,11 +41,10 @@ export default function FreeFlightScreen() {
   }, []);
 
   const sendSingleCommand = async (command: string) => {
-    if (!await checkDroneConnected()) return;
+    if (!await checkDroneConnected(API_URL)) return;
     try {
-      const serverIp = process.env.EXPO_PUBLIC_API_URL;
       console.log(`[FREE FLIGHT] Sending command: ${command}`);
-      await axios.post(`${serverIp}/api/execute/sequence`, { commands: [command] });
+      await axios.post(`${API_URL}/api/execute/sequence`, { commands: [command] });
       console.log(`[FREE FLIGHT] Command '${command}' sent successfully`);
     } catch (e) {
       console.error(`[FREE FLIGHT] Command '${command}' failed:`, e);

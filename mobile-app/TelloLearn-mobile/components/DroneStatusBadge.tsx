@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import axios from 'axios';
+import { useApiUrl } from '@/utils/apiConfig';
 
 type DroneStatus = 'checking' | 'connected' | 'disconnected';
 
 export default function DroneStatusBadge() {
+  const { apiUrl: API_URL } = useApiUrl();
   const [status, setStatus] = useState<DroneStatus>('checking');
 
   const poll = useCallback(async () => {
     try {
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-      if (!apiUrl) { setStatus('disconnected'); return; }
-      const res = await axios.get(`${apiUrl}/drone/status`, { timeout: 3000 });
-      setStatus(res.data.error ? 'disconnected' : 'connected');
+      const res = await axios.get(`${API_URL}/drone/status`, { timeout: 4000 });
+      setStatus(res.data.connected ? 'connected' : 'disconnected');
     } catch {
       setStatus('disconnected');
     }
@@ -20,7 +20,7 @@ export default function DroneStatusBadge() {
 
   useEffect(() => {
     poll();
-    const id = setInterval(poll, 5000);
+    const id = setInterval(poll, 3000);
     return () => clearInterval(id);
   }, [poll]);
 

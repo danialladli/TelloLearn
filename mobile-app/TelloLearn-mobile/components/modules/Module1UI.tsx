@@ -5,6 +5,7 @@ import { Play, XCircle, Trash2 } from 'lucide-react-native';
 import axios from 'axios';
 import DroneStatusBadge from '@/components/DroneStatusBadge';
 import { checkDroneConnected } from '@/utils/droneCheck';
+import { useApiUrl } from '@/utils/apiConfig';
 
 // 1. DEFINE OUR CODING BLOCKS
 const AVAILABLE_BLOCKS = [
@@ -30,6 +31,7 @@ const AVAILABLE_BLOCKS = [
 ];
 
 export default function Module1UI ({ moduleData }: { moduleData: any }) {
+  const { apiUrl: API_URL } = useApiUrl();
   const router = useRouter();
   const [isRunning, setIsRunning] = useState(false);
   const [sequence, setSequence] = useState<typeof AVAILABLE_BLOCKS>([]);
@@ -49,16 +51,14 @@ export default function Module1UI ({ moduleData }: { moduleData: any }) {
       return;
     }
 
-    if (!await checkDroneConnected()) return;
+    if (!await checkDroneConnected(API_URL)) return;
 
     setIsRunning(true);
     try {
         const commandsToSend = sequence.map(b => b.command);
-        const serverIp = process.env.EXPO_PUBLIC_API_URL;
-
         console.log('[MODULE 1] Executing sequence:', commandsToSend);
 
-        await axios.post(`${serverIp}/api/module1/sequence`, {
+        await axios.post(`${API_URL}/api/module1/sequence`, {
             commands: commandsToSend
         });
 

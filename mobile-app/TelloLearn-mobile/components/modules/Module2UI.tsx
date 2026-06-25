@@ -1,59 +1,70 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { XCircle, Play, Square, AlertOctagon, Target } from 'lucide-react-native';
 import axios from 'axios';
 import DroneStatusBadge from '@/components/DroneStatusBadge';
 import { checkDroneConnected } from '@/utils/droneCheck';
+import { useApiUrl } from '@/utils/apiConfig';
 
 export default function Module2({ moduleData }: { moduleData: any }) {
+  const { apiUrl: API_URL } = useApiUrl();
   const router = useRouter();
   
   const [missionActive, setMissionActive] = useState(false);
   const [padDetected, setPadDetected] = useState(false);
   const [flightState, setFlightState] = useState("OFFLINE");
   const [countdown, setCountdown] = useState<number | null>(null);
-  
-  // Ref to hold the timer so we can cancel it if needed
-  const timerRef = useRef<number | null>(null);
 
-  const serverIp = process.env.EXPO_PUBLIC_API_URL;
-  const videoStreamUrl = `${serverIp}/video_feed`;
+  const timerRef = useRef<number | null>(null);
+  // Guard: only fire "Mission Complete" alert if module was actually running
+  const wasEverActive = useRef(false);
+
+  const [frameUri, setFrameUri] = useState(`${API_URL}/video/snapshot?t=0`);
+
+  // --- VIDEO SNAPSHOT POLLING (React Native <Image> cannot render MJPEG streams) ---
+  useEffect(() => {
+    const id = setInterval(() => {
+      setFrameUri(`${API_URL}/video/snapshot?t=${Date.now()}`);
+    }, 100);
+    return () => clearInterval(id);
+  }, []);
 
   // --- LIVE TELEMETRY POLLING ---
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval>;
 
     if (missionActive) {
-      // Ping the server every 500 milliseconds (half a second)
       intervalId = setInterval(async () => {
         try {
-          const response = await axios.get(`${serverIp}/api/module2/telemetry`);
+          const response = await axios.get(`${API_URL}/api/module2/telemetry`);
           const data = response.data;
 
-          setFlightState(data.state);
-          setPadDetected(data.pad_detected);
-
-          // Detect when the landing successfully finishes!
-          if (data.status === "inactive") {
+          if (data.status === "active") {
+            wasEverActive.current = true;
+            setFlightState(data.state);
+            setPadDetected(data.pad_detected);
+          } else if (data.status === "inactive" && wasEverActive.current) {
+            // Only fire "complete" alert if the module was actually running first.
+            // Prevents false trigger when polling catches the module before it starts.
+            wasEverActive.current = false;
             setMissionActive(false);
             setPadDetected(false);
             setFlightState("OFFLINE");
-            Alert.alert("Landing Complete", "The drone has successfully touched down.");
+            Alert.alert("Mission Complete", "The drone has landed.");
           }
         } catch (e) {
           console.log("Telemetry ping failed.");
         }
       }, 500);
     } else {
-      // Reset when mission is paused/stopped
       setFlightState("OFFLINE");
       setPadDetected(false);
     }
 
-    // Cleanup the interval if the component unmounts or mission stops
     return () => clearInterval(intervalId);
-  }, [missionActive, serverIp]);
+  }, [missionActive]);
 
   const toggleMission = async () => {
     // 1. If currently counting down, CANCEL IT
@@ -68,11 +79,11 @@ export default function Module2({ moduleData }: { moduleData: any }) {
     if (missionActive) {
       console.log('[MODULE 2] Mission stopped by user');
       setMissionActive(false);
-      axios.post(`${serverIp}/api/module1/sequence`, { commands: ['stop'] }).catch(() => {});
+      axios.post(`${API_URL}/api/module1/sequence`, { commands: ['stop'] }).catch(() => {});
       return;
     }
 
-    if (!await checkDroneConnected()) return;
+    if (!await checkDroneConnected(API_URL)) return;
 
     // 3. Start the 3-second Countdown!
     console.log('[MODULE 2] Drone check passed — starting countdown');
@@ -87,13 +98,15 @@ export default function Module2({ moduleData }: { moduleData: any }) {
       } else {
         if (timerRef.current) clearInterval(timerRef.current);
         setCountdown(null);
-        setMissionActive(true);
         setPadDetected(false);
+        wasEverActive.current = false;
 
         try {
           console.log('[MODULE 2] Sending takeoff + start landing-pad mission');
-          await axios.post(`${serverIp}/api/module1/takeoff`);
-          await axios.post(`${serverIp}/api/module2/start`);
+          await axios.post(`${API_URL}/api/module1/takeoff`);
+          await axios.post(`${API_URL}/api/module2/start`);
+          // Start telemetry polling only AFTER module is confirmed running
+          setMissionActive(true);
           console.log('[MODULE 2] Mission commands sent successfully');
         } catch (e) {
           console.error('[MODULE 2] Failed to start mission:', e);
@@ -111,7 +124,7 @@ export default function Module2({ moduleData }: { moduleData: any }) {
     setMissionActive(false);
     
     try {
-      await axios.post(`${serverIp}/api/module1/land`);
+      await axios.post(`${API_URL}/api/module1/land`);
       Alert.alert("Emergency Land", "Drone is landing safely.");
     } catch (e) {
       Alert.alert("Error", "Failed to send land command!");
@@ -189,7 +202,7 @@ export default function Module2({ moduleData }: { moduleData: any }) {
       {/* RIGHT SIDE: Live Camera Feed */}
       <View style={styles.cameraSection}>
         <View style={styles.videoContainer}>
-          <Image source={{ uri: videoStreamUrl }} style={styles.videoStream} resizeMode="contain" />
+          <Image source={{ uri: frameUri }} style={styles.videoStream} contentFit="contain" cachePolicy="none" />
           
           <View style={styles.hudOverlay}>
             <Text style={styles.hudText}>● LIVE FEED</Text>

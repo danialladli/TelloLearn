@@ -1,12 +1,13 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Image, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Image, Alert, Modal, TextInput } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Colors } from '@/constants/theme';
-import { Lock, Play, Gamepad2, CheckCircle, User } from 'lucide-react-native';
+import { Lock, Play, Gamepad2, CheckCircle, User, Settings } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import DroneStatusBadge from '@/components/DroneStatusBadge';
+import { useApiUrl } from '@/utils/apiConfig';
 
 // Static module definitions (The descriptions/titles)
 const MODULE_DEFS = [
@@ -18,6 +19,7 @@ const MODULE_DEFS = [
 ];
 
 export default function Dashboard() {
+  const { apiUrl: API_URL, backendIp, setBackendIp } = useApiUrl();
   const router = useRouter();
   const theme = Colors.dark;
   
@@ -28,6 +30,10 @@ export default function Dashboard() {
   const [username, setUsername] = useState('Pilot');
   const [avatar, setAvatar] = useState<string | null>(null);
 
+  // IP settings modal
+  const [showIpModal, setShowIpModal] = useState(false);
+  const [ipInput, setIpInput] = useState(backendIp);
+
   // The function that fetches fresh data from your server
   const fetchProgress = async () => {
     try {
@@ -36,10 +42,9 @@ export default function Dashboard() {
       const storedUsername = await AsyncStorage.getItem('user_username');
       if (storedUsername) setUsername(storedUsername);
 
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-      if (!token || !apiUrl) return;
+      if (!token) return;
 
-      const response = await axios.get(`${apiUrl}/api/user/sync`, {
+      const response = await axios.get(`${API_URL}/api/user/sync`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -102,7 +107,7 @@ export default function Dashboard() {
 
   const getAvatarSource = () => {
     if (!avatar || avatar === "") return null;
-    const baseUrl = process.env.EXPO_PUBLIC_API_URL;
+    const baseUrl = API_URL;
 
     // Convert Windows backslashes to web forward slashes
     let cleanAvatarPath = avatar.replace(/\\/g, '/');
@@ -133,6 +138,10 @@ export default function Dashboard() {
         <Text style={[styles.header, { color: theme.text }]}>Mission Select</Text>
 
         <DroneStatusBadge />
+
+        <TouchableOpacity onPress={() => { setIpInput(backendIp); setShowIpModal(true); }}>
+          <Settings color={theme.textSecondary} size={20} />
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.profileContainer} onPress={handleLogout} activeOpacity={0.7}>
           <Text style={[styles.pilotName, { color: theme.textSecondary }]}>Pilot {username}</Text>
@@ -205,6 +214,36 @@ export default function Dashboard() {
             <Text style={styles.ffText}>FREE FLIGHT</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <Modal visible={showIpModal} transparent animationType="fade" onRequestClose={() => setShowIpModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalBox, { backgroundColor: theme.card }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Backend Server IP</Text>
+            <Text style={[styles.modalSub, { color: theme.textSecondary }]}>Current: {backendIp}:8000</Text>
+            <TextInput
+              style={[styles.ipInput, { color: theme.text, borderColor: theme.border }]}
+              value={ipInput}
+              onChangeText={setIpInput}
+              placeholder="e.g. 192.168.43.100"
+              placeholderTextColor={theme.textSecondary}
+              keyboardType="decimal-pad"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: theme.border }]} onPress={() => setShowIpModal(false)}>
+                <Text style={{ color: theme.text }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: theme.tint, flex: 1 }]}
+                onPress={async () => { await setBackendIp(ipInput.trim()); setShowIpModal(false); }}
+              >
+                <Text style={{ color: 'white', fontWeight: 'bold' }}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -221,5 +260,12 @@ const styles = StyleSheet.create({
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   title: { fontWeight: 'bold', fontSize: 16 },
   freeFly: { width: '100%', padding: 20, borderRadius: 12, marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 15 },
-  ffText: { color: 'white', fontWeight: 'bold', fontSize: 20 }
+  ffText: { color: 'white', fontWeight: 'bold', fontSize: 20 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
+  modalBox: { width: 300, borderRadius: 16, padding: 24 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 4 },
+  modalSub: { fontSize: 12, marginBottom: 16 },
+  ipInput: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 16, marginBottom: 4 },
+  modalBtnRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  modalBtn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
 });
