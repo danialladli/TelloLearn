@@ -13,11 +13,22 @@ from routers import auth, users, modules, progress, admin, drone, ai
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+# Remove djitellopy's own StreamHandler and silence INFO spam.
+# Covers both package-level and sub-module loggers, plus the legacy
+# "DJITelloPy" name used in some older installed versions.
+for _dji_name in ("djitellopy", "djitellopy.tello", "DJITelloPy"):
+    _dji_log = logging.getLogger(_dji_name)
+    _dji_log.handlers.clear()      # drop djitellopy's [INFO] tello.py handler
+    _dji_log.setLevel(logging.WARNING)
+    _dji_log.propagate = True      # WARNING+ still reach root → our format
+del _dji_name, _dji_log
+
 
 class _PollingFilter(logging.Filter):
     """Drop uvicorn access-log lines for high-frequency polling endpoints."""
     _SUPPRESSED = {
         "/drone/status",
+        "/video/snapshot",
         "/api/module2/telemetry",
         "/api/module3/telemetry",
         "/api/module4/telemetry",
