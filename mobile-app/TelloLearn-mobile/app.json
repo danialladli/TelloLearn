@@ -2,7 +2,7 @@
   "expo": {
     "name": "TelloLearn-mobile",
     "slug": "TelloLearn-mobile",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/tellolearn_icon.png",
     "scheme": "tellolearnmobile",
@@ -14,6 +14,7 @@
     },
     "android": {
       "package": "com.tellolearn.mobile",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/tellolearn_icon.png",
         "backgroundColor": "#0f172a"
@@ -25,8 +26,15 @@
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
+    "updates": {
+      "url": "https://u.expo.dev/e92053f7-4e18-4bd7-88cf-47d27fd63c8e"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "plugins": [
       "expo-router",
+      "expo-updates",
       [
         "expo-splash-screen",
         {
@@ -39,7 +47,13 @@
           }
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-font",
+      ["expo-build-properties", {
+        "android": {
+          "usesCleartextTraffic": true
+        }
+      }]
     ],
     "experiments": {
       "typedRoutes": true,
