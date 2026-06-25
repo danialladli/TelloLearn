@@ -1,5 +1,7 @@
+import io
 import time
 import logging
+import cv2
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
@@ -14,14 +16,18 @@ logger = logging.getLogger(__name__)
 
 @router.get("/drone/status")
 def get_status():
+    if not tello_system.is_connected or tello_system.drone is None:
+        return {"connected": False, "error": "Drone not connected"}
     try:
         return {
+            "connected": True,
             "battery": tello_system.drone.get_battery(),
             "temp": tello_system.drone.get_temperature(),
-            "flying": tello_system.drone.is_flying
+            "flying": tello_system.drone.is_flying,
         }
     except Exception:
-        return {"error": "Drone disconnected"}
+        tello_system.is_connected = False
+        return {"connected": False, "error": "Drone disconnected"}
 
 
 @router.get("/video_feed")
@@ -30,6 +36,21 @@ def video_feed():
         tello_system.get_video_stream(),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
+
+
+@router.get("/video/snapshot")
+def video_snapshot():
+    """Returns a single JPEG frame — used by the mobile app for live polling."""
+    if not tello_system.is_connected:
+        return StreamingResponse(io.BytesIO(b""), media_type="image/jpeg")
+
+    frame = tello_system.drone.get_frame_read().frame
+    if frame is None or frame.size == 0:
+        return StreamingResponse(io.BytesIO(b""), media_type="image/jpeg")
+
+    img = cv2.resize(frame, (360, 240))
+    _, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 70])
+    return StreamingResponse(io.BytesIO(buf.tobytes()), media_type="image/jpeg")
 
 
 # ── Module 1 — Basic Flight ───────────────────────────────────────────────────
@@ -98,14 +119,20 @@ def get_module4_telemetry():
     return tello_system.get_module_4_telemetry()
 
 
-# ── Module 5 — Swarm ──────────────────────────────────────────────────────────
+# ── Module 5 — Swarm / Routine ────────────────────────────────────────────────
 
-@router.post("/api/module5/{command}")
-def run_swarm_command(command: str):
-    logger.info(f"[MODULE 5] Swarm command: {command}")
-    return tello_system.execute_swarm_command(command)
+@router.post("/api/module5/start")
+def start_module5():
+    logger.info("[MODULE 5] Starting routine")
+    return tello_system.start_module_5()
+
+
+@router.post("/api/module5/stop")
+def stop_module5():
+    logger.info("[MODULE 5] Stopping routine")
+    return tello_system.stop_module_5()
 
 
 @router.get("/api/module5/telemetry")
-def get_swarm_telemetry():
-    return tello_system.get_swarm_telemetry()
+def get_module5_telemetry():
+    return tello_system.get_module_5_telemetry()
